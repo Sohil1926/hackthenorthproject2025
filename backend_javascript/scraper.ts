@@ -4,6 +4,7 @@
 //# Option 2: Compile then run
 // npm run build
 // npm start
+// start is currently binded to: "start": "node dist/scraper.js"
 
 // scraper.ts
 import { chromium, Page, Locator, Browser, BrowserContext } from 'playwright';
