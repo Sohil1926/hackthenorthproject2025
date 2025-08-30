@@ -5,33 +5,38 @@ import json
 import re
 
 # --- Configuration ---
-# Define the target pages. The script will activate on any of them.
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
 START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
 OUTPUT_FILE = "waterlooworks_jobs.json"
+
+# --- NEW: Configurable Timeout (in milliseconds) ---
+# The user requested 10 seconds, which is 10000 ms.
+# This will be used for all critical waiting operations.
+ACTION_TIMEOUT = 10000 
 
 # --- Scraping Functions ---
 
 async def scrape_job_listings_from_page(page):
     """
     Scrapes the currently visible job listings from the main table.
-    This function is fast and gathers the identifiers for all jobs on the page.
+    IMPROVED: This now iterates by index to avoid issues with the page re-rendering
+    during the scraping process (a common "stale element" problem).
     """
     print("Extracting job listings from the current page...")
     job_listings = []
     
-    # Wait for the table body to be populated with at least one row
-    await page.wait_for_selector("tbody tr.table__row--body", timeout=20000)
+    list_selector = "tbody tr.table__row--body"
+    await page.wait_for_selector(list_selector, timeout=ACTION_TIMEOUT)
     
-    rows = await page.locator("tbody tr.table__row--body").all()
+    row_count = await page.locator(list_selector).count()
     
-    for row in rows:
+    for i in range(row_count):
+        row = page.locator(list_selector).nth(i)
         try:
-            # Extract data using locators relative to the row for speed and reliability
-            job_id = await row.locator("td").nth(0).inner_text()
+            job_id = await row.locator("td").nth(0).inner_text(timeout=ACTION_TIMEOUT)
             job_title_element = row.locator("td").nth(1).locator("a")
-            job_title = await job_title_element.inner_text()
-            company = await row.locator("td").nth(2).inner_text()
+            job_title = await job_title_element.inner_text(timeout=ACTION_TIMEOUT)
+            company = await row.locator("td").nth(2).inner_text(timeout=ACTION_TIMEOUT)
             
             job_listings.append({
                 "id": job_id.strip(),
@@ -39,7 +44,7 @@ async def scrape_job_listings_from_page(page):
                 "company": company.strip(),
             })
         except Exception as e:
-            print(f"Warning: Could not parse a row. It might be a non-standard row. Error: {e}")
+            print(f"  Warning: Could not parse row {i+1}. It might be a non-standard row. Error: {e}")
             
     print(f"Found {len(job_listings)} jobs on this page.")
     return job_listings
@@ -49,17 +54,17 @@ async def scrape_job_details(page):
     Scrapes the detailed information from the job detail modal/overlay.
     This function is specifically tailored to the provided HTML structure.
     """
-    print("Scraping job details from the modal...")
+    print("  Scraping job details from the modal...")
     
     modal_selector = "div.modal__inner--document-overlay"
-    await page.wait_for_selector(modal_selector, timeout=15000)
+    await page.wait_for_selector(modal_selector, timeout=ACTION_TIMEOUT)
     
-    modal_html = await page.locator(modal_selector).inner_html()
+    modal_html = await page.locator(modal_selector).inner_html(timeout=ACTION_TIMEOUT)
     soup = BeautifulSoup(modal_html, 'html.parser')
     
     details = {}
     
-    # --- Extract Header Info ---
+    # Extract header info
     header = soup.find('div', class_='dashboard-header--mini')
     if header:
         title_tag = header.find('h2')
@@ -72,19 +77,17 @@ async def scrape_job_details(page):
                 details['organization'] = spans[0].get_text(strip=True)
                 details['division'] = spans[1].get_text(strip=True)
 
-    # --- Extract Key-Value Pairs from the main body ---
+    # Extract all key-value pairs from the main body
     key_value_pairs = soup.find_all('div', class_='tag__key-value-list')
     for pair in key_value_pairs:
         key_tag = pair.find('span', class_='label')
         if not key_tag:
             continue
             
-        # Clean up the key text
         key = key_tag.get_text(strip=True).replace(':', '').lower().replace(' ', '_').replace('/', '_')
         
         value_tag = pair.find('p')
         if value_tag:
-            # Handle special cases with nested tables or lists
             if key == 'level':
                 levels = [td.get_text(strip=True) for td in value_tag.find_all('td')]
                 value = ', '.join(levels) if levels else 'N/A'
@@ -95,7 +98,6 @@ async def scrape_job_details(page):
                 items = [td.get_text(strip=True) for td in value_tag.find_all('td') if td.get_text(strip=True)]
                 value = items if items else 'N/A'
             else:
-                # General case: get all text, preserving line breaks for descriptions
                 value = value_tag.get_text(strip=True, separator='\n')
         else:
             value = 'N/A'
@@ -112,16 +114,14 @@ async def main():
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto(START_URL)
-
-        print("\n" + "="*60)
-        print("A browser window has been opened.")
-        print("Please log in and navigate to a job postings page.")
-        print("The script will automatically continue once you arrive.")
-        print("="*60 + "\n")
-
         all_job_listings = []
         try:
+            await page.goto(START_URL)
+            print("\n" + "="*60)
+            print("Please log in and navigate to a job postings page.")
+            print("The script will automatically continue once you arrive.")
+            print("="*60 + "\n")
+
             await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=300000)
             
             print(f"\n✅ Target page detected ({page.url})! Starting scrape...\n")
@@ -131,6 +131,12 @@ async def main():
             while True:
                 print(f"\n--- Scraping Listings Page {page_num} ---")
                 
+                # FIX: Wait for the table to be stable before scraping
+                await page.wait_for_selector("tbody tr.table__row--body", timeout=ACTION_TIMEOUT)
+                
+                # Get ID of first job to confirm page change later
+                first_job_id_before_click = await page.locator("tbody tr.table__row--body").first.locator("td").first.inner_text()
+
                 jobs_on_this_page = await scrape_job_listings_from_page(page)
                 if not jobs_on_this_page:
                     print("No more jobs found on this page.")
@@ -144,7 +150,15 @@ async def main():
                 if await next_button.count() > 0 and not is_disabled:
                     print("Navigating to the next page...")
                     await next_button.click()
-                    await page.wait_for_load_state('networkidle', timeout=20000)
+                    
+                    # FIX: This is the crucial new wait condition.
+                    # Wait for the first job ID on the page to be different from the old one.
+                    print("  Waiting for page content to update...")
+                    await page.wait_for_function(
+                        f'document.querySelector("tbody tr.table__row--body td")?.innerText !== "{first_job_id_before_click}"',
+                        timeout=ACTION_TIMEOUT
+                    )
+                    print("  Page content updated.")
                     page_num += 1
                 else:
                     print("Last page reached.")
@@ -164,18 +178,21 @@ async def main():
                 print(f"Processing {i+1}/{len(all_job_listings)}: Job ID {job['id']} - '{job['title']}'")
                 
                 try:
-                    # Use a regular expression for a more robust link search
                     job_link = page.get_by_role("link", name=re.compile(f"^{re.escape(job['title'])}$", re.IGNORECASE), exact=False)
                     
-                    # Paginate until the job link is visible
                     current_page_for_detail = 1
                     while await job_link.count() == 0:
                         print(f"  Job not on page {current_page_for_detail}, moving to next...")
                         next_button = page.locator('a[aria-label="Go to next page"]')
                         if await next_button.count() == 0 or 'disabled' in (await next_button.get_attribute('class') or ''):
                             raise Exception("Could not find job link after checking all pages.")
+                        
+                        first_job_id_before_click = await page.locator("tbody tr.table__row--body").first.locator("td").first.inner_text()
                         await next_button.click()
-                        await page.wait_for_load_state('networkidle')
+                        await page.wait_for_function(
+                            f'document.querySelector("tbody tr.table__row--body td")?.innerText !== "{first_job_id_before_click}"',
+                            timeout=ACTION_TIMEOUT
+                        )
                         current_page_for_detail += 1
                         job_link = page.get_by_role("link", name=re.compile(f"^{re.escape(job['title'])}$", re.IGNORECASE), exact=False)
 
@@ -184,22 +201,19 @@ async def main():
                     job_details = await scrape_job_details(page)
                     job['details'] = job_details
                     
-                    # Close the modal to return to the list
-                    close_button = page.locator('div.modal__inner--document-overlay button[aria-label*="Close"]')
+                    close_button = page.locator('nav.floating--action-bar button[aria-label*="Close"]')
                     await close_button.click()
                     
-                    # Wait for the modal to fully disappear before proceeding
-                    await page.wait_for_selector('div.modal__inner--document-overlay', state='hidden', timeout=15000)
+                    await page.wait_for_selector('div.modal__inner--document-overlay', state='hidden', timeout=ACTION_TIMEOUT)
 
                 except Exception as e:
                     print(f"  ❌ FAILED to process details for Job ID {job['id']}. Error: {e}")
                     job['details'] = {"error": str(e)}
-                    # Reset state by reloading the page
                     await page.reload()
                     await page.wait_for_load_state('networkidle')
 
         except asyncio.TimeoutError:
-            print("\n❌ Timed out waiting for you to navigate to the correct page.")
+            print(f"\n❌ Operation timed out after {ACTION_TIMEOUT/1000} seconds. The page might be slow or an element is missing.")
         except Exception as e:
             print(f"A critical error occurred: {e}")
         finally:
