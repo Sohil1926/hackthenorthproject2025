@@ -2,7 +2,6 @@ import asyncio
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import json
-import re
 
 # --- Configuration ---
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
@@ -159,9 +158,8 @@ async def main():
                                 await modal_locator.wait_for(state='hidden', timeout=ACTION_TIMEOUT)
                                 print("    Modal closed.")
                         except Exception as close_error:
-                            print(f"    Could not close modal gracefully. Forcing page reload to recover. Error: {close_error}")
-                            await page.reload(wait_until="networkidle")
-                            break # Break inner loop to restart scraping on the reloaded page
+                            print(f"    Could not close modal gracefully. Error: {close_error}")
+                            raise close_error  # Crash the script instead of recovering
                     
                     del job_summary['link_locator'] 
                     all_jobs_data.append(job_summary)
@@ -196,7 +194,7 @@ async def main():
                     json.dump(all_jobs_data, f, ensure_ascii=False, indent=4)
                 print(f"\n✅ Job data for {len(all_jobs_data)} jobs saved to {OUTPUT_FILE}")
 
-            print("Script finished. Closing the browser in 10 seconds.")
+            print("Script finished. Closing the browser in 5 seconds.")
             await asyncio.sleep(5)
             await browser.close()
 
