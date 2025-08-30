@@ -480,8 +480,7 @@ async function main(): Promise<void> {
       console.log("=".repeat(60));
     }
     
-    console.log("\nScript finished. Browser will close in 10 seconds...");
-    await page.waitForTimeout(10000);
+    console.log("\nScript finished. Browser will close...");
     await browser.close();
   }
 }
