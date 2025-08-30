@@ -3,3 +3,4 @@ venv/
 __pycache__/
 backend_javascript/node_modules
 frontend/node_modules
+alt_backend/node_modules
