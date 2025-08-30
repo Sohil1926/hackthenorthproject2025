@@ -9,7 +9,7 @@ from matcher import JobMatcher
 
 # --- Configuration ---
 JOBS_INPUT_FILE = "waterlooworks_jobs.json"
-RESUME_FILE = "my_resume.pdf"  # <-- IMPORTANT: Make sure this file exists!
+RESUME_FILE = "resume.pdf"  # <-- IMPORTANT: Make sure this file exists!
 OUTPUT_FILE = "jobs_with_scores.json"
 
 def main():

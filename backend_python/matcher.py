@@ -172,7 +172,7 @@ class JobMatcher:
 
 # --- Example Usage with YOUR provided data ---
 if __name__ == "__main__":
-    DUMMY_RESUME_PATH = "my_resume.pdf"
+    DUMMY_RESUME_PATH = "resume.pdf"
     if not os.path.exists(DUMMY_RESUME_PATH):
         print(f"Creating a dummy SOFTWARE DEV resume file: {DUMMY_RESUME_PATH}")
         doc = fitz.open()
