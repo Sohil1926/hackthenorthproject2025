@@ -382,9 +382,6 @@ async def main():
                 print(f"  - Successful: {successful_jobs}")
                 print(f"  - Failed: {failed_jobs}")
                 print(f"{'='*60}")
-
-            print("\nScript finished. Browser will close in 10 seconds...")
-            await asyncio.sleep(10)
             await browser.close()
 
 
