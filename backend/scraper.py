@@ -2,17 +2,29 @@ import asyncio
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import json
+import re
+import time
 
-# --- Configuration ---
-URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
+# ==============================================================================
+# --- CONFIGURATION ---
+# ==============================================================================
+# URLs and File Paths
 START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
+URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
 OUTPUT_FILE = "waterlooworks_jobs.json"
 
-# --- Configurable Timeout (in milliseconds) ---
-# 10 seconds, as requested.
-ACTION_TIMEOUT = 10000 
+# Scraping Behavior
+ACTION_TIMEOUT = 10000  # 10 seconds for critical waits
+RETRY_ATTEMPTS = 2      # How many times to retry scraping a single job's details
+# ==============================================================================
 
-# --- Scraping Functions ---
+
+def save_data_incrementally(data, filename):
+    """Saves the collected data to a JSON file."""
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    print(f"\n✅ Progress saved. {len(data)} jobs collected so far in '{filename}'")
+
 
 async def get_job_summaries_from_page(page):
     """
@@ -48,19 +60,15 @@ async def get_job_summaries_from_page(page):
 
 async def scrape_job_details(page):
     """
-    Scrapes the detailed information from the job detail modal/overlay.
+    Scrapes all detailed information from the job detail modal.
+    IMPROVED: This version is more generic and robust.
     """
     print("    Scraping job details from the modal...")
     
     modal_selector = "div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)"
     modal_locator = page.locator(modal_selector)
     
-    # Wait for the modal container to become visible
     await modal_locator.wait_for(state='visible', timeout=ACTION_TIMEOUT)
-    
-    # <<< THE CRUCIAL FIX IS HERE >>>
-    # Now, wait for a specific piece of content INSIDE the modal to ensure data has loaded.
-    # The "Job Posting Information" header is a perfect, stable element to wait for.
     await modal_locator.locator('h4:text-is("Job Posting Information")').wait_for(timeout=ACTION_TIMEOUT)
     
     modal_html = await modal_locator.inner_html(timeout=ACTION_TIMEOUT)
@@ -68,7 +76,7 @@ async def scrape_job_details(page):
     
     details = {}
     
-    # Extract header info
+    # Extract header info first
     header = soup.find('div', class_='dashboard-header--mini')
     if header:
         title_tag = header.find('h2')
@@ -81,32 +89,44 @@ async def scrape_job_details(page):
                 details['organization'] = spans[0].get_text(strip=True)
                 details['division'] = spans[1].get_text(strip=True)
 
-    # Extract all key-value pairs
-    key_value_pairs = soup.find_all('div', class_='tag__key-value-list')
-    for pair in key_value_pairs:
-        key_tag = pair.find('span', class_='label')
-        if not key_tag:
-            continue
+    # --- IMPROVED: Generic Key-Value Pair Extraction ---
+    # This loop finds all sections and all key-value pairs within them.
+    panels = soup.find_all('div', class_='panel')
+    for panel in panels:
+        panel_title_tag = panel.find('h4', class_='heading--banner')
+        if panel_title_tag:
+            panel_title = panel_title_tag.get_text(strip=True)
             
-        key = key_tag.get_text(strip=True).replace(':', '').lower().replace(' ', '_').replace('/', '_')
-        
-        value_tag = pair.find('p')
-        if value_tag:
-            if key == 'level':
-                levels = [td.get_text(strip=True) for td in value_tag.find_all('td')]
-                value = ', '.join(levels) if levels else 'N/A'
-            elif key == 'targeted_degrees_and_disciplines':
-                disciplines = [li.get_text(strip=True) for li in value_tag.find_all('li')]
-                value = disciplines if disciplines else 'N/A'
-            elif key == 'additional_information':
-                items = [td.get_text(strip=True) for td in value_tag.find_all('td') if td.get_text(strip=True)]
-                value = items if items else 'N/A'
-            else:
-                value = value_tag.get_text(strip=True, separator='\n')
-        else:
-            value = 'N/A'
-            
-        details[key] = value
+            # Extract all key-value pairs within this panel
+            key_value_pairs = panel.find_all('div', class_='tag__key-value-list')
+            for pair in key_value_pairs:
+                key_tag = pair.find('span', class_='label')
+                if not key_tag:
+                    continue
+                
+                key = key_tag.get_text(strip=True).replace(':', '').lower().replace(' ', '_').replace('/', '_')
+                
+                value_tag = pair.find('p')
+                if value_tag:
+                    # Handle special cases with nested tables or lists
+                    if key == 'level':
+                        levels = [td.get_text(strip=True) for td in value_tag.find_all('td')]
+                        value = ', '.join(levels) if levels else 'N/A'
+                    elif key == 'targeted_degrees_and_disciplines':
+                        disciplines = [li.get_text(strip=True) for li in value_tag.find_all('li')]
+                        value = disciplines if disciplines else 'N/A'
+                    elif key == 'additional_information':
+                        items = [td.get_text(strip=True) for td in value_tag.find_all('td') if td.get_text(strip=True)]
+                        value = items if items else 'N/A'
+                    else:
+                        # General case: get all text, preserving line breaks for descriptions
+                        value = value_tag.get_text(strip=True, separator='\n')
+                else:
+                    value = 'N/A'
+                
+                # Add to details dictionary, avoiding overwriting the main job title
+                if key != 'job_title':
+                    details[key] = value
 
     return details
 
@@ -142,31 +162,47 @@ async def main():
                 for i, job_summary in enumerate(job_summaries_on_page):
                     print(f"  -> Processing job {i+1}/{len(job_summaries_on_page)} (ID: {job_summary['id']})")
                     
-                    try:
-                        await job_summary['link_locator'].click()
-                        job_details = await scrape_job_details(page)
-                        job_summary['details'] = job_details
-                    
-                    except Exception as e:
-                        print(f"    ❌ FAILED to process details for Job ID {job_summary['id']}. Error: {e}")
-                        job_summary['details'] = {"error": str(e)}
-                    
-                    finally:
+                    job_details = None
+                    # --- IMPROVED: Retry Mechanism ---
+                    for attempt in range(RETRY_ATTEMPTS):
                         try:
-                            modal_locator = page.locator('div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)')
-                            if await modal_locator.is_visible(timeout=5000):
-                                print("    Closing modal...")
-                                close_button = modal_locator.locator('nav.floating--action-bar button:has(i:text-is("close"))')
-                                await close_button.click()
-                                await modal_locator.wait_for(state='hidden', timeout=ACTION_TIMEOUT)
-                                print("    Modal closed.")
-                        except Exception as close_error:
-                            print(f"    Could not close modal gracefully. Forcing page reload to recover. Error: {close_error}")
-                            await page.reload(wait_until="networkidle")
-                            break 
+                            await job_summary['link_locator'].click()
+                            job_details = await scrape_job_details(page)
+                            job_summary['details'] = job_details
+                            break # Success, exit retry loop
+                        except Exception as e:
+                            print(f"    Attempt {attempt + 1} FAILED. Error: {e}")
+                            if attempt < RETRY_ATTEMPTS - 1:
+                                print("    Retrying...")
+                                # Ensure modal is closed before retrying
+                                modal_locator = page.locator('div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)')
+                                if await modal_locator.is_visible(timeout=2000):
+                                    await modal_locator.locator('nav.floating--action-bar button:has(i:text-is("close"))').click()
+                                    await modal_locator.wait_for(state='hidden', timeout=ACTION_TIMEOUT)
+                                await asyncio.sleep(2) # Wait a moment before retrying
+                            else:
+                                print(f"    All {RETRY_ATTEMPTS} attempts failed for Job ID {job_summary['id']}.")
+                                job_summary['details'] = {"error": str(e)}
+                    
+                    # Always try to close the modal to get back to a clean state
+                    try:
+                        modal_locator = page.locator('div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)')
+                        if await modal_locator.is_visible(timeout=5000):
+                            print("    Closing modal...")
+                            close_button = modal_locator.locator('nav.floating--action-bar button:has(i:text-is("close"))')
+                            await close_button.click()
+                            await modal_locator.wait_for(state='hidden', timeout=ACTION_TIMEOUT)
+                            print("    Modal closed.")
+                    except Exception as close_error:
+                        print(f"    Could not close modal gracefully. Forcing page reload to recover. Error: {close_error}")
+                        await page.reload(wait_until="networkidle")
+                        break # Break inner loop to restart scraping on the reloaded page
                     
                     del job_summary['link_locator'] 
                     all_jobs_data.append(job_summary)
+
+                # --- IMPROVED: Incremental Saving ---
+                save_data_incrementally(all_jobs_data, OUTPUT_FILE)
 
                 # Check for pagination
                 next_button = page.locator('a[aria-label="Go to next page"]')
@@ -193,13 +229,12 @@ async def main():
         except Exception as e:
             print(f"A critical error occurred: {e}")
         finally:
+            # Final save just in case
             if all_jobs_data:
-                with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(all_jobs_data, f, ensure_ascii=False, indent=4)
-                print(f"\n✅ Job data for {len(all_jobs_data)} jobs saved to {OUTPUT_FILE}")
+                save_data_incrementally(all_jobs_data, OUTPUT_FILE)
 
-            print("Script finished. Closing the browser in 5 seconds.")
-            await asyncio.sleep(5)
+            print("Script finished. Closing the browser in 10 seconds.")
+            await asyncio.sleep(10)
             await browser.close()
 
 
