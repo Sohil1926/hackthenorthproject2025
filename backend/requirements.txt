@@ -1,3 +1,7 @@
+# python -m spacy download en_core_web_lg 
+# uv run -- spacy download en_core_web_lg
+# uv run --with spacy -- spacy download en_core_web_lg
+
 PyMuPDF
 spacy 
 scikit-learn
