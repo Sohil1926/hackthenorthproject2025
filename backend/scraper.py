@@ -38,10 +38,10 @@ async def get_job_summaries_from_page(page):
                 "id": job_id.strip(),
                 "title": job_title.strip(),
                 "company": company.strip(),
-                "link_locator": job_title_element # Store the locator for clicking
+                "link_locator": job_title_element
             })
         except Exception as e:
-            print(f"  Warning: Could not parse a row. It might be a non-standard row. Error: {e}")
+            print(f"  Warning: Could not parse a row. Error: {e}")
             
     print(f"  Found {len(job_summaries)} jobs on this page.")
     return job_summaries
@@ -52,12 +52,18 @@ async def scrape_job_details(page):
     """
     print("    Scraping job details from the modal...")
     
-    # *** FIX: Use a highly specific selector to target ONLY the job detail modal ***
-    # The data-v-* attribute is unique to the job modal and ignores the PDF modal.
-    modal_selector = "div.modal__inner--document-overlay[data-v-70e7ded6]"
-    await page.wait_for_selector(modal_selector, state='visible', timeout=ACTION_TIMEOUT)
+    modal_selector = "div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)"
+    modal_locator = page.locator(modal_selector)
     
-    modal_html = await page.locator(modal_selector).inner_html(timeout=ACTION_TIMEOUT)
+    # Wait for the modal container to become visible
+    await modal_locator.wait_for(state='visible', timeout=ACTION_TIMEOUT)
+    
+    # <<< THE CRUCIAL FIX IS HERE >>>
+    # Now, wait for a specific piece of content INSIDE the modal to ensure data has loaded.
+    # The "Job Posting Information" header is a perfect, stable element to wait for.
+    await modal_locator.locator('h4:text-is("Job Posting Information")').wait_for(timeout=ACTION_TIMEOUT)
+    
+    modal_html = await modal_locator.inner_html(timeout=ACTION_TIMEOUT)
     soup = BeautifulSoup(modal_html, 'html.parser')
     
     details = {}
@@ -146,20 +152,18 @@ async def main():
                         job_summary['details'] = {"error": str(e)}
                     
                     finally:
-                        # This block ALWAYS runs to ensure we try to close the modal.
                         try:
-                            # *** FIX: Use the specific selector for the job modal ***
-                            modal_locator = page.locator('div.modal__inner--document-overlay[data-v-70e7ded6]')
+                            modal_locator = page.locator('div.modal__inner--document-overlay:not(#pdfPreviewModal_modalInner)')
                             if await modal_locator.is_visible(timeout=5000):
                                 print("    Closing modal...")
-                                # *** FIX: Use a more robust selector for the close button ***
                                 close_button = modal_locator.locator('nav.floating--action-bar button:has(i:text-is("close"))')
                                 await close_button.click()
                                 await modal_locator.wait_for(state='hidden', timeout=ACTION_TIMEOUT)
                                 print("    Modal closed.")
                         except Exception as close_error:
-                            print(f"    Could not close modal gracefully. Error: {close_error}")
-                            raise close_error  # Crash the script instead of recovering
+                            print(f"    Could not close modal gracefully. Forcing page reload to recover. Error: {close_error}")
+                            await page.reload(wait_until="networkidle")
+                            break 
                     
                     del job_summary['link_locator'] 
                     all_jobs_data.append(job_summary)
