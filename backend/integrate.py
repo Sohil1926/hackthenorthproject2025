@@ -1,88 +1,84 @@
-# integrate.py
+# integrate.py (Ideal Version 2.0)
 
 import json
-# Import the functions from your matcher.py file
-from matcher import extract_text_from_pdf, extract_skills, calculate_match_score
+import os
+from tqdm import tqdm  # For the progress bar
+
+# Import the new JobMatcher class from our ideal matcher.py
+from matcher import JobMatcher
 
 # --- Configuration ---
 JOBS_INPUT_FILE = "waterlooworks_jobs.json"
-RESUME_FILE = "my_resume.pdf"  # <--- IMPORTANT: Make sure this file exists!
+RESUME_FILE = "my_resume.pdf"  # <-- IMPORTANT: Make sure this file exists!
 OUTPUT_FILE = "jobs_with_scores.json"
-
-def combine_job_details_to_text(job_data):
-    """Combines relevant fields from a job's details into a single string."""
-    details = job_data.get('details', {})
-    if "error" in details:
-        return ""
-
-    # We prioritize the most skill-heavy fields
-    text_parts = [
-        details.get('job_title', ''),
-        details.get('job_summary', ''),
-        details.get('job_responsibilities', ''),
-        details.get('required_skills', ''),
-        details.get('targeted_degrees_and_disciplines', '')
-    ]
-    
-    # Join all parts into a single lowercase string
-    return " ".join(str(part) for part in text_parts).lower()
 
 def main():
     """
-    Main function to load jobs, match them against a resume, and save the results.
+    Main function to load scraped jobs, enrich them with AI-powered match
+    analysis, and save the sorted results.
     """
-    print("--- Starting Phase 2 Integration ---")
+    print("--- Starting Phase 2: AI Integration & Scoring ---")
 
-    # 1. Load the scraped jobs data
+    # 1. Load the scraped jobs data from the scraper's output
     try:
         with open(JOBS_INPUT_FILE, 'r', encoding='utf-8') as f:
             all_jobs = json.load(f)
-        print(f"✅ Successfully loaded {len(all_jobs)} jobs from {JOBS_INPUT_FILE}")
+        print(f"✅ Successfully loaded {len(all_jobs)} jobs from '{JOBS_INPUT_FILE}'")
     except FileNotFoundError:
         print(f"❌ ERROR: The input file '{JOBS_INPUT_FILE}' was not found.")
-        print("Please run the scraper.py script first to generate it.")
+        print("-> Please run the scraper.py script first to generate it.")
         return
     except json.JSONDecodeError:
-        print(f"❌ ERROR: Could not parse the JSON in '{JOBS_INPUT_FILE}'. It might be empty or corrupted.")
+        print(f"❌ ERROR: Could not parse JSON in '{JOBS_INPUT_FILE}'. It might be empty or corrupted.")
         return
 
-    # 2. Process the resume
+    # 2. Initialize the JobMatcher with your resume.
+    # This parses the resume once and prepares the matcher for efficient scoring.
     try:
-        resume_text = extract_text_from_pdf(RESUME_FILE)
-        resume_skills = extract_skills(resume_text)
-        print(f"✅ Successfully processed resume. Found {len(resume_skills)} unique skills.")
-        print(f"   Skills: {resume_skills}")
-    except FileNotFoundError:
-        print(f"❌ ERROR: The resume file '{RESUME_FILE}' was not found.")
-        print("Please add your resume to the project folder and update the filename if needed.")
+        matcher = JobMatcher(resume_path=RESUME_FILE)
+    except FileNotFoundError as e:
+        print(f"❌ ERROR: {e}")
+        print(f"-> Please add your resume as '{RESUME_FILE}' to the project folder.")
         return
 
-    # 3. Iterate, score, and enrich each job
-    print("\nScoring jobs against your resume...")
-    for job in all_jobs:
-        if "error" in job.get('details', {}):
-            job['match_score'] = 0.0
-            continue
-
-        job_text = combine_job_details_to_text(job)
-        job_skills = extract_skills(job_text)
-        
-        score = calculate_match_score(resume_skills, job_skills)
-        job['match_score'] = round(score, 2)
-        
-        print(f"  - Scored Job ID {job['id']} ({job['title']}): {job['match_score']}%")
-
-    # 4. Sort jobs by match score (highest first)
-    all_jobs.sort(key=lambda x: x['match_score'], reverse=True)
-    print("\nTop 5 matching jobs:")
-    for job in all_jobs[:5]:
-        print(f"  - {job['match_score']}%: {job['title']} at {job['company']}")
-
-    # 5. Save the enriched data to a new file
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(all_jobs, f, ensure_ascii=False, indent=4)
+    # 3. Iterate through each job, calculate the match analysis, and store it.
+    enriched_jobs = []
     
-    print(f"\n✅ Integration complete! Enriched job data saved to {OUTPUT_FILE}")
+    # The tqdm wrapper creates a beautiful progress bar
+    for job in tqdm(all_jobs, desc="🤖 Scoring jobs"):
+        # The matcher returns a rich dictionary with score, matched skills, etc.
+        match_analysis = matcher.calculate_match(job)
+        
+        # Create a new dictionary to hold the final, enriched job data
+        enriched_job = job.copy()
+        enriched_job['match_analysis'] = match_analysis
+        enriched_jobs.append(enriched_job)
+
+    # 4. Sort the enriched jobs by score in descending order
+    enriched_jobs.sort(key=lambda x: x['match_analysis']['score'], reverse=True)
+
+    # 5. Print a helpful summary of the top 5 matches
+    print("\n--- Top 5 Job Matches ---")
+    for job in enriched_jobs[:5]:
+        analysis = job['match_analysis']
+        print(f"\n  - {analysis['score']}%: {job['title']} @ {job['company']}")
+        if analysis['matched_skills']:
+            print(f"    ✅ Matched Skills: {', '.join(analysis['matched_skills'])}")
+        if analysis['missing_skills']:
+            # Only show the most critical missing skills (from required_skills field)
+            required_skills_text = job.get('details', {}).get('required_skills', '').lower()
+            critical_missing = [s for s in analysis['missing_skills'] if s in required_skills_text]
+            if critical_missing:
+                print(f"    ❌ Critical Missing: {', '.join(critical_missing)}")
+
+    # 6. Save the final, enriched, and sorted data to the output file
+    try:
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(enriched_jobs, f, ensure_ascii=False, indent=4)
+        print(f"\n\n✅ Success! Enriched data for {len(enriched_jobs)} jobs saved to '{OUTPUT_FILE}'")
+    except Exception as e:
+        print(f"\n❌ ERROR: Could not save the output file. Reason: {e}")
+
 
 if __name__ == "__main__":
     main()

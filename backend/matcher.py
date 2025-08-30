@@ -1,149 +1,198 @@
-import fitz  # This is the PyMuPDF library for some reason
+# matcher.py (Ideal Version 2.0)
+
+import fitz  # PyMuPDF
 import spacy
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import os
+import json
+from collections import defaultdict
 
-# --- 1. Configuration: The Brain's Knowledge Base ---
+# --- 1. Configuration ---
 
-# Load the spaCy model once
+# Load the spaCy model once.
 try:
-    nlp = spacy.load("en_core_web_lg")
+    nlp = spacy.load("en_core_web_sm")
 except OSError:
-    print("Downloading 'en_core_web_lg' model...")
-    os.system("python -m spacy download en_core_web_lg")
-    nlp = spacy.load("en_core_web_lg")
+    print("Downloading 'en_core_web_sm' model for spaCy...")
+    os.system("python -m spacy download en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
-# This is the core "knowledge base" of our matcher.
-# The more comprehensive this list, the smarter the agent.
-# We use lowercase for consistent matching.
+# This is the core "knowledge base" of our matcher. It can be expanded over time.
 SKILLS_KNOWLEDGE_BASE = [
-    "python", "java", "c++", "c#", "javascript", "typescript", "html", "css", "ruby", "go",
-    "react", "vue", "angular", "next.js", "node.js", "express.js", "flask", "django",
-    "sql", "postgresql", "mysql", "mongodb", "redis",
-    "git", "github", "gitlab", "docker", "kubernetes", "jenkins", "ci/cd",
-    "aws", "azure", "gcp", "google cloud", "amazon web services",
+    "python", "java", "c++", "c#", "javascript", "typescript", "html", "css", "ruby", "go", "rust",
+    "react", "vue", "angular", "next.js", "node.js", "express.js", "flask", "django", "fastapi",
+    "sql", "postgresql", "mysql", "mongodb", "redis", "nosql",
+    "git", "github", "gitlab", "docker", "kubernetes", "jenkins", "ci/cd", "terraform",
+    "aws", "azure", "gcp", "google cloud", "amazon web services", "cloud",
     "linux", "bash", "powershell",
-    "machine learning", "data analysis", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch",
+    "machine learning", "data analysis", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "ai",
     "rest", "graphql", "api", "apis",
-    "agile", "scrum", "jira"
+    "agile", "scrum", "jira", "figma", "selenium", "playwright",
+    "data structures", "algorithms", "system design"
 ]
 
-# --- 2. Core Functions ---
+# --- WEIGHTING CONFIGURATION ---
+# This is the secret sauce. We value skills found in certain fields more than others.
+FIELD_WEIGHTS = {
+    "required_skills": 1.0,
+    "job_title": 0.9,
+    "job_responsibilities": 0.7,
+    "job_summary": 0.5,
+    "targeted_degrees_and_disciplines": 0.4,
+}
 
-def extract_text_from_pdf(pdf_path):
-    """Extracts all text from a given PDF file and converts to lowercase."""
-    if not os.path.exists(pdf_path):
-        raise FileNotFoundError(f"The file {pdf_path} was not found.")
-    
-    print(f"Reading resume from: {pdf_path}")
-    doc = fitz.open(pdf_path)
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text.lower()
 
-def extract_skills(text):
+class JobMatcher:
     """
-    Extracts predefined skills from a given text using spaCy's phrase matching
-    for better accuracy with multi-word skills.
+    An intelligent job matcher that scores jobs against a user's profile
+    using a weighted analysis of structured job data.
     """
-    # Use PhraseMatcher for multi-word skills like "machine learning"
-    matcher = spacy.matcher.PhraseMatcher(nlp.vocab, attr='LOWER')
-    patterns = [nlp.make_doc(skill) for skill in SKILLS_KNOWLEDGE_BASE]
-    matcher.add("SKILL_MATCHER", patterns)
+    def __init__(self, resume_path):
+        self.resume_path = resume_path
+        self.skill_matcher = self._initialize_skill_matcher()
+        self.resume_skills = self._parse_resume()
+        print(f"Matcher initialized for {resume_path}.")
+        print(f"Found {len(self.resume_skills)} unique skills in resume: {sorted(list(self.resume_skills))}\n")
 
-    doc = nlp(text)
-    matches = matcher(doc)
-    
-    found_skills = set()
-    for match_id, start, end in matches:
-        skill = doc[start:end].text
-        found_skills.add(skill)
+    def _initialize_skill_matcher(self):
+        """Initializes spaCy's PhraseMatcher for efficient skill finding."""
+        matcher = spacy.matcher.PhraseMatcher(nlp.vocab, attr='LOWER')
+        patterns = [nlp.make_doc(skill) for skill in SKILLS_KNOWLEDGE_BASE]
+        matcher.add("SKILL_MATCHER", patterns)
+        return matcher
+
+    def _extract_text_from_pdf(self):
+        """Extracts all text from the resume PDF and converts to lowercase."""
+        if not os.path.exists(self.resume_path):
+            raise FileNotFoundError(f"The resume file {self.resume_path} was not found.")
         
-    return list(found_skills)
+        doc = fitz.open(self.resume_path)
+        text = "".join(page.get_text() for page in doc)
+        return text.lower()
 
-def calculate_match_score(resume_skills, job_skills):
-    """
-    Calculates the match score using TF-IDF and Cosine Similarity.
-    Returns a score from 0 to 100.
-    """
-    # If the job requires no specific skills from our list, we can't score it.
-    if not job_skills:
-        return 0.0
+    def _extract_skills(self, text):
+        """Extracts a set of skills from a given text."""
+        doc = nlp(text)
+        matches = self.skill_matcher(doc)
+        return {doc[start:end].text for _, start, end in matches}
 
-    # If the resume has no skills from our list, the score is 0.
-    if not resume_skills:
-        return 0.0
+    def _parse_resume(self):
+        """Processes the resume to extract and store its skills."""
+        resume_text = self._extract_text_from_pdf()
+        return self._extract_skills(resume_text)
 
-    # The vectorizer expects documents (strings), not lists of words.
-    resume_text = ' '.join(resume_skills)
-    job_text = ' '.join(job_skills)
+    def calculate_match(self, job_data):
+        """
+        Calculates a detailed match score for a single job.
+        
+        Returns:
+            dict: A dictionary containing the score and a breakdown of the match.
+        """
+        job_details = job_data.get('details', {})
+        if not job_details or "error" in job_details:
+            return {
+                "score": 0,
+                "matched_skills": [],
+                "missing_skills": [],
+                "notes": "Job details were missing or contained an error."
+            }
 
-    # Create a TF-IDF Vectorizer and transform the skill sets
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform([resume_text, job_text])
+        # --- Weighted Skill Extraction from Job ---
+        weighted_job_skills = defaultdict(float)
+        total_job_skill_weight = 0
 
-    # Calculate the Cosine Similarity between the two vectors
-    # The result is a 2x2 matrix, the value we want is at [0, 1]
-    score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
-    
-    return score * 100
+        for field, weight in FIELD_WEIGHTS.items():
+            field_text = str(job_details.get(field, "")).lower()
+            skills_in_field = self._extract_skills(field_text)
+            
+            for skill in skills_in_field:
+                # We take the highest weight if a skill appears in multiple fields
+                weighted_job_skills[skill] = max(weighted_job_skills[skill], weight)
 
-# --- 3. Main Execution Block for Testing ---
+        if not weighted_job_skills:
+            return {
+                "score": 0,
+                "matched_skills": sorted(list(self.resume_skills)),
+                "missing_skills": [],
+                "notes": "No relevant skills found in the job description."
+            }
 
+        # --- Scoring Logic ---
+        matched_skill_weight = 0
+        
+        for skill, weight in weighted_job_skills.items():
+            total_job_skill_weight += weight
+            if skill in self.resume_skills:
+                matched_skill_weight += weight
+
+        # The score is the ratio of matched weight to total possible weight.
+        score = (matched_skill_weight / total_job_skill_weight) * 100 if total_job_skill_weight > 0 else 0
+
+        # --- Breakdown Analysis ---
+        job_skills_set = set(weighted_job_skills.keys())
+        matched_skills = self.resume_skills.intersection(job_skills_set)
+        missing_skills = job_skills_set.difference(self.resume_skills)
+
+        return {
+            "score": round(score, 2),
+            "matched_skills": sorted(list(matched_skills)),
+            "missing_skills": sorted(list(missing_skills)),
+            "notes": f"Matched {len(matched_skills)} of {len(job_skills_set)} required skills."
+        }
+
+
+# --- Example Usage ---
 if __name__ == "__main__":
-    print("--- Running AI Matcher Test ---")
+    # Create a dummy resume file for testing if it doesn't exist
+    DUMMY_RESUME_PATH = "my_resume.pdf"
+    if not os.path.exists(DUMMY_RESUME_PATH):
+        print(f"Creating a dummy resume file: {DUMMY_RESUME_PATH}")
+        # This is a very basic way to create a PDF, good enough for text extraction
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Mohammed Elshrief - Software Developer\n"
+                                  "Experienced in Python, Django, and React.\n"
+                                  "Built several projects using PostgreSQL and deployed them on AWS.\n"
+                                  "Proficient with Git for version control and Docker for containerization.\n"
+                                  "Familiar with agile methodologies and system design principles.")
+        doc.save(DUMMY_RESUME_PATH)
+        doc.close()
 
-    # Create a dummy resume file for testing
-    DUMMY_RESUME_PATH = "dummy_resume.pdf"
-    # In a real scenario, you would upload a real resume.
-    # For this test, we'll just use plain text.
-    # NOTE: This part is just for the test. The function `extract_text_from_pdf` is not used here.
-    resume_text_content = """
-    Mohammed Elshrief - Software Developer
-    A passionate developer with experience in Python, Django, and React.
-    Built several projects using PostgreSQL and deployed them on AWS.
-    Proficient with Git for version control and Docker for containerization.
-    Familiar with agile methodologies.
-    """.lower()
+    # 1. Initialize the matcher with your resume
+    try:
+        matcher = JobMatcher(resume_path=DUMMY_RESUME_PATH)
+    except FileNotFoundError as e:
+        print(e)
+        exit()
 
-    # Example Job Description (from the scraper)
-    job_description_text = """
-    Job Title: Full Stack Developer
-    We are seeking a developer with strong Python and Django skills.
-    The ideal candidate will have experience with front-end frameworks like React or Vue.
-    Must be comfortable with SQL databases, preferably PostgreSQL.
-    Experience with cloud platforms like AWS or GCP is a major plus.
-    Knowledge of Docker is required.
-    """.lower()
+    # 2. Create some sample job data (mimicking your scraper's output)
+    sample_job_1 = {
+        "id": "12345",
+        "title": "Senior Python Developer",
+        "company": "Tech Solutions Inc.",
+        "details": {
+            "job_title": "Senior Python Developer",
+            "required_skills": "Must have strong experience in Python, Django, and REST APIs. Knowledge of Docker is required.",
+            "job_summary": "We are looking for a Python developer to join our team. You will work with React on the frontend.",
+            "job_responsibilities": "Design and implement backend services. Deploy applications using AWS."
+        }
+    }
 
-    # --- The Full Process ---
-    
-    # Step 1: Extract skills from the resume and job description
-    print("\n1. Extracting skills...")
-    resume_skills = extract_skills(resume_text_content)
-    job_skills = extract_skills(job_description_text)
+    sample_job_2 = {
+        "id": "67890",
+        "title": "Frontend Developer (Java)",
+        "company": "Creative Designs",
+        "details": {
+            "job_title": "Frontend Developer",
+            "required_skills": "Expertise in Java and Spring Boot is essential. Experience with Angular is a plus.",
+            "job_summary": "This role focuses on building user interfaces. Some Python scripting may be involved for automation."
+        }
+    }
 
-    print(f"\n   [+] Skills found in Resume: {resume_skills}")
-    print(f"   [+] Skills required by Job: {job_skills}")
+    # 3. Calculate the match for each job
+    print("\n--- Scoring Job 1: Senior Python Developer ---")
+    match_result_1 = matcher.calculate_match(sample_job_1)
+    print(json.dumps(match_result_1, indent=2))
 
-    # Step 2: Calculate the match score
-    print("\n2. Calculating match score...")
-    match_score = calculate_match_score(resume_skills, job_skills)
-
-    # Step 3: Display the result
-    print("\n--- FINAL RESULT ---")
-    print(f"The match score is: {match_score:.2f}%")
-    print("--------------------")
-
-    # Example of how you would use it with a real PDF
-    # print("\n--- Testing with a real PDF (if you have one) ---")
-    # try:
-    #     # To test this part, create a PDF named 'my_resume.pdf' in the same folder
-    #     real_resume_text = extract_text_from_pdf('my_resume.pdf')
-    #     real_resume_skills = extract_skills(real_resume_text)
-    #     real_score = calculate_match_score(real_resume_skills, job_skills)
-    #     print(f"Score with 'my_resume.pdf': {real_score:.2f}%")
-    # except FileNotFoundError as e:
-    #     print(e)
+    print("\n--- Scoring Job 2: Frontend Developer (Java) ---")
+    match_result_2 = matcher.calculate_match(sample_job_2)
+    print(json.dumps(match_result_2, indent=2))
