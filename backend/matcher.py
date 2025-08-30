@@ -9,11 +9,11 @@ from collections import defaultdict
 # --- 1. Configuration ---
 
 try:
-    nlp = spacy.load("en_core_web_sm")
+    nlp = spacy.load("en_core_web_lg")
 except OSError:
-    print("Downloading 'en_core_web_sm' model for spaCy...")
-    os.system("python -m spacy download en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+    print("Downloading 'en_core_web_lg' model for spaCy...")
+    os.system("python -m spacy download en_core_web_lg")
+    nlp = spacy.load("en_core_web_lg")
 
 # --- EXPANDED KNOWLEDGE BASE ---
 SKILLS_KNOWLEDGE_BASE = [
