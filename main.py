@@ -11,6 +11,7 @@ import urllib.request
 import tarfile
 import zipfile
 from dotenv import load_dotenv
+import asyncio
 
 # Suppress tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -18,6 +19,7 @@ from backend.vectorizer import vectorize_jobs
 from backend.matcher import match_resume_to_jobs
 from backend.scraper import scrape_jobs
 from backend.personalizer import personalize_resume_and_cover_letter
+from backend.upload import upload_for_jobs
 
 # TO ADD:
 # deterministic filtering of jobs based on location, job title, compensation, etc.
@@ -144,3 +146,8 @@ if __name__ == "__main__":
         out_dir=PERSONALIZED_DIR,
         model=PERSONALIZE_MODEL,
     )
+    # 5) Upload personalized documents for the selected job IDs
+    try:
+        asyncio.run(upload_for_jobs(selected_ids, out_dir=PERSONALIZED_DIR))
+    except Exception as e:
+        print(f"Upload step failed: {e}")

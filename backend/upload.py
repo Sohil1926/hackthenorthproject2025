@@ -1,11 +1,12 @@
 from playwright.async_api import async_playwright
 import asyncio
+import os
 
 START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm"]
 ACTION_TIMEOUT = 15000
 
-async def search_job_by_id(id_list: list, context):
+async def search_job_by_id(id_list: list, context, out_dir: str | None = None):
     page = await context.new_page()
     await page.goto(START_URL)
     
@@ -18,6 +19,19 @@ async def search_job_by_id(id_list: list, context):
     await page.wait_for_load_state('networkidle')
     
     for job_id in id_list:
+        # Determine personalized PDF paths if provided
+        resume_path = None
+        cover_path = None
+        if out_dir:
+            try:
+                rp = os.path.join(out_dir, f"{job_id}_resume.pdf")
+                cp = os.path.join(out_dir, f"{job_id}_cover_letter.pdf")
+                if os.path.exists(rp):
+                    resume_path = rp
+                if os.path.exists(cp):
+                    cover_path = cp
+            except Exception:
+                pass
         search_box = await page.wait_for_selector('input[name="emptyStateKeywordSearch"]')
         await search_box.fill('')
         await search_box.fill(job_id)
@@ -25,9 +39,9 @@ async def search_job_by_id(id_list: list, context):
         await page.wait_for_timeout(2000)
         
         print(f"Searching for job ID: {job_id}")
-        await apply(page, job_id)
+        await apply(page, job_id, resume_path=resume_path, cover_path=cover_path)
 
-async def apply(page, job_id):
+async def apply(page, job_id, resume_path: str | None = None, cover_path: str | None = None):
     rows = await page.locator("tbody tr.table__row--body").all()
     
     for i, row in enumerate(rows):
@@ -94,7 +108,7 @@ async def apply(page, job_id):
 
             # Click "Upload New Résumé" button (target the resume-specific button only)
             upload_button = frame_or_page.locator('button.js--btn--upload-new-doc[data-dt-name="Résumé"]').first
-            if await upload_button.count() > 0:
+            if await upload_button.count() > 0 and resume_path:
                 print(f"Row {i+1}: Clicking Upload New Résumé")
                 await upload_button.click()
                 # Wait for the document name input and fill it with desired value
@@ -110,7 +124,7 @@ async def apply(page, job_id):
                     await frame_or_page.wait_for_timeout(300)
              
                 file_input = frame_or_page.locator('input#fileUpload_docUpload, input[type="file"]').first
-                file_path = '/Users/sohilathare/Documents/Robot Operating System (ROS).pdf'
+                file_path = resume_path
                 print(f"Row {i+1}: Setting file input: {file_path}")
                 await file_input.set_input_files(file_path)
                 # Submit the upload dialog
@@ -119,10 +133,12 @@ async def apply(page, job_id):
                     print(f"Row {i+1}: Clicking Upload A Document")
                     await submit_upload.click()
                     await frame_or_page.wait_for_load_state('networkidle')
+            elif await upload_button.count() > 0 and not resume_path:
+                print(f"Row {i+1}: Skipping Resume upload for job {job_id} (file not found)")
 
             # If a cover letter upload button exists, click it next
             cover_letter_btn = frame_or_page.locator('button.js--btn--upload-new-doc[data-dt-name="Cover Letter"]').first
-            if await cover_letter_btn.count() > 0:
+            if await cover_letter_btn.count() > 0 and cover_path:
                 print(f"Row {i+1}: Clicking Upload New Cover Letter")
                 await cover_letter_btn.click()
                 # Fill the cover letter document name
@@ -138,7 +154,7 @@ async def apply(page, job_id):
                     await frame_or_page.wait_for_timeout(300)
                     # Set the cover letter file and submit
                     cl_file_input = frame_or_page.locator('input#fileUpload_docUpload, input[type="file"]').first
-                    cl_file_path = '/Users/sohilathare/Documents/helloworld.pdf'
+                    cl_file_path = cover_path
                     print(f"Row {i+1}: Setting cover letter file: {cl_file_path}")
                     await cl_file_input.set_input_files(cl_file_path)
                     cl_submit = frame_or_page.locator('#submitFileUploadFormBtn, button#submitFileUploadFormBtn, button:has-text("Upload A Document")').first
@@ -146,6 +162,8 @@ async def apply(page, job_id):
                         print(f"Row {i+1}: Submitting Cover Letter upload")
                         await cl_submit.click()
                         await frame_or_page.wait_for_load_state('networkidle')
+            elif await cover_letter_btn.count() > 0 and not cover_path:
+                print(f"Row {i+1}: Skipping Cover Letter upload for job {job_id} (file not found)")
 
             # Click the final Submit button to proceed
             submit_btn = frame_or_page.locator('button.js--ui-wizard-next-btn:has-text("Submit"), #button_573121027768999').first
@@ -179,14 +197,13 @@ async def apply(page, job_id):
             await app_page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
             await app_page.wait_for_load_state('networkidle')
 
-async def main():
+async def upload_for_jobs(job_ids: list[str], out_dir: str | None):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         context = await browser.new_context()
-        
-        job_ids = ["436892", "436734"]
-        await search_job_by_id(job_ids, context)
+        await search_job_by_id(job_ids, context, out_dir=out_dir)
         await browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Example manual run
+    asyncio.run(upload_for_jobs(["436892", "436734"], out_dir=None))
