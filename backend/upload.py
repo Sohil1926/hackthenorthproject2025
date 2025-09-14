@@ -5,6 +5,9 @@ import os
 START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm"]
 ACTION_TIMEOUT = 15000
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+OUTPUTS_DIR = os.path.join(REPO_ROOT, "outputs")
+STORAGE_STATE_FILE = os.path.join(OUTPUTS_DIR, "storage_state.json")
 
 async def search_job_by_id(id_list: list, context, out_dir: str | None = None):
     page = await context.new_page()
@@ -242,8 +245,18 @@ async def apply(page, job_id, resume_path: str | None = None, cover_path: str | 
 async def upload_for_jobs(job_ids: list[str], out_dir: str | None):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
-        context = await browser.new_context()
+        # Reuse saved auth state if available
+        if os.path.exists(STORAGE_STATE_FILE):
+            context = await browser.new_context(storage_state=STORAGE_STATE_FILE)
+        else:
+            context = await browser.new_context()
         await search_job_by_id(job_ids, context, out_dir=out_dir)
+        # Persist any updated session state for future runs
+        try:
+            os.makedirs(OUTPUTS_DIR, exist_ok=True)
+            await context.storage_state(path=STORAGE_STATE_FILE)
+        except Exception:
+            pass
         await browser.close()
 
 if __name__ == "__main__":
