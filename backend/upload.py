@@ -88,15 +88,8 @@ async def apply(page, job_id):
                         await span_label.first.click()
                         print(f"Row {i+1}: Clicked span.label--span for the radio")
 
-            # Click "Upload New Résumé" button (target the resume-specific button)
+            # Click "Upload New Résumé" button (target the resume-specific button only)
             upload_button = frame_or_page.locator('button.js--btn--upload-new-doc[data-dt-name="Résumé"]').first
-            if await upload_button.count() == 0:
-                upload_button = frame_or_page.locator('button:has-text("Upload New Résumé")').first
-            if await upload_button.count() == 0:
-                # Fallback: assume the second upload-new-doc is for Résumé
-                all_upload_buttons = frame_or_page.locator('button.js--btn--upload-new-doc')
-                if await all_upload_buttons.count() >= 2:
-                    upload_button = all_upload_buttons.nth(1)
             if await upload_button.count() > 0:
                 print(f"Row {i+1}: Clicking Upload New Résumé")
                 await upload_button.click()
