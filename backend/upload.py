@@ -98,6 +98,12 @@ async def apply(page, job_id):
                 await doc_name_input.wait_for(state='visible', timeout=20000)
                 await doc_name_input.fill(f"Resume + {job_id}")
                 await frame_or_page.wait_for_timeout(300)
+                # Click the file upload button
+                file_upload_button = frame_or_page.locator('#btn_fileUploadDialog_docUpload, button#btn_fileUploadDialog_docUpload, button:has(i:has-text("file_upload"))').first
+                if await file_upload_button.count() > 0:
+                    print(f"Row {i+1}: Clicking file upload button")
+                    await file_upload_button.click()
+                    await frame_or_page.wait_for_timeout(300)
 
 async def main():
     async with async_playwright() as p:
