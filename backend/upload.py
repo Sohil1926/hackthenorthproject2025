@@ -142,6 +142,20 @@ async def apply(page, job_id):
                         print(f"Row {i+1}: Submitting Cover Letter upload")
                         await cl_submit.click()
                         await frame_or_page.wait_for_load_state('networkidle')
+
+            # Click the final Submit button to proceed
+            submit_btn = frame_or_page.locator('button.js--ui-wizard-next-btn:has-text("Submit"), #button_573121027768999').first
+            if await submit_btn.count() > 0:
+                print(f"Row {i+1}: Clicking final Submit")
+                await submit_btn.click()
+                await frame_or_page.wait_for_load_state('networkidle')
+
+            # Click Done to finish the wizard
+            done_btn = frame_or_page.locator('button.js--ui-wizard-finish-btn:has-text("Done"), #button_5190379572824657').first
+            if await done_btn.count() > 0:
+                print(f"Row {i+1}: Clicking Done")
+                await done_btn.click()
+                await frame_or_page.wait_for_load_state('networkidle')
                 
 
 async def main():
