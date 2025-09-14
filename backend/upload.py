@@ -60,6 +60,48 @@ async def apply(page, job_id, resume_path: str | None = None, cover_path: str | 
                 await page.wait_for_load_state('networkidle')
                 print(f"Row {i+1}: Stayed on same page after click")
 
+            # Check for Pre-Screening Questions step; if present, cancel and move to next job id
+            try:
+                await app_page.wait_for_timeout(300)
+                prescreen_frame = None
+                # Search frames for the pre-screen container
+                for frame in app_page.frames:
+                    try:
+                        if await frame.locator('#preScreenQuestions').count() > 0:
+                            prescreen_frame = frame
+                            break
+                    except Exception:
+                        continue
+                # Fallback to page context
+                if prescreen_frame is None and await app_page.locator('#preScreenQuestions').count() > 0:
+                    prescreen_frame = app_page
+                if prescreen_frame is not None:
+                    print(f"Row {i+1}: Pre-screening questions detected. Cancelling application for job {job_id}")
+                    cancel_btn = prescreen_frame.locator('button.js--ui-wizard-cancel-btn:has-text("Cancel"), button.js--ui-wizard-cancel-btn').first
+                    if await cancel_btn.count() > 0:
+                        await cancel_btn.click()
+                        # Attempt to confirm the cancellation if a modal appears
+                        try:
+                            confirm_btn = app_page.locator('button:has-text("Yes"), button:has-text("Confirm"), button:has-text("OK")').first
+                            if await confirm_btn.count() > 0:
+                                await confirm_btn.click()
+                        except Exception:
+                            pass
+                        # Allow UI to update and handle page closure
+                        await app_page.wait_for_timeout(500)
+                        if app_page.is_closed():
+                            app_page = page
+                        # Navigate back to job postings for next id
+                        try:
+                            await app_page.goto(START_URL)
+                            await app_page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
+                            await app_page.wait_for_load_state('networkidle')
+                        except Exception:
+                            pass
+                        return
+            except Exception:
+                pass
+
             # Wait for the application options to appear and select the radio
             await app_page.wait_for_timeout(500)
             radio_selector = 'input[type="radio"][name="applyOption"][value="customPkg"]'
