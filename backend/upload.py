@@ -2,9 +2,9 @@ from playwright.async_api import async_playwright
 import asyncio
 import os
 
-START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
+START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm"]
-ACTION_TIMEOUT = 15000
+ACTION_TIMEOUT = 60000
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUTS_DIR = os.path.join(REPO_ROOT, "outputs")
 STORAGE_STATE_FILE = os.path.join(OUTPUTS_DIR, "storage_state.json")
@@ -13,13 +13,21 @@ async def search_job_by_id(id_list: list, context, out_dir: str | None = None):
     page = await context.new_page()
     await page.goto(START_URL)
     
-    print("Please log in. I'll redirect you to the job postings page after login.")
-    # Wait until we're back on any authenticated myAccount page
+    print("\n" + "="*60)
+    print("Please log in manually. After login, the script will automatically")
+    print("navigate to the job postings page.")
+    print("="*60 + "\n")
+    
+    # Wait until we're logged in (any myAccount page indicates successful login)
     await page.wait_for_url(lambda url: "/myAccount/" in url, timeout=300000)
-    # Ensure we land on the jobs page specifically
-    await page.goto(START_URL)
-    await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
+    print("✅ Login detected! Navigating to job postings page...")
+    
+    # Navigate to the job postings page
+    job_postings_url = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
+    await page.goto(job_postings_url)
+    await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=ACTION_TIMEOUT)
     await page.wait_for_load_state('networkidle')
+    print("✅ Successfully reached job postings page!")
     
     for job_id in id_list:
         # Determine personalized PDF paths if provided
@@ -35,7 +43,7 @@ async def search_job_by_id(id_list: list, context, out_dir: str | None = None):
                     cover_path = cp
             except Exception:
                 pass
-        search_box = await page.wait_for_selector('input[name="emptyStateKeywordSearch"]')
+        search_box = await page.wait_for_selector('input[name="emptyStateKeywordSearch"]', timeout=ACTION_TIMEOUT)
         await search_box.fill('')
         await search_box.fill(job_id)
         await search_box.press('Enter')
