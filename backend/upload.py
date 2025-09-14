@@ -121,7 +121,28 @@ async def apply(page, job_id):
             if await cover_letter_btn.count() > 0:
                 print(f"Row {i+1}: Clicking Upload New Cover Letter")
                 await cover_letter_btn.click()
+                # Fill the cover letter document name
+                cl_doc_name = frame_or_page.locator('input[name="docName"]').first
+                await cl_doc_name.wait_for(state='visible', timeout=20000)
+                await cl_doc_name.fill(f"Cover letter + {job_id}")
                 await frame_or_page.wait_for_timeout(300)
+                # Click the file upload button for cover letter
+                cl_file_upload_btn = frame_or_page.locator('#btn_fileUploadDialog_docUpload').first
+                if await cl_file_upload_btn.count() > 0:
+                    print(f"Row {i+1}: Clicking Cover Letter file upload button")
+                    await cl_file_upload_btn.click()
+                    await frame_or_page.wait_for_timeout(300)
+                    # Set the cover letter file and submit
+                    cl_file_input = frame_or_page.locator('input#fileUpload_docUpload, input[type="file"]').first
+                    cl_file_path = '/Users/sohilathare/Documents/helloworld.pdf'
+                    print(f"Row {i+1}: Setting cover letter file: {cl_file_path}")
+                    await cl_file_input.set_input_files(cl_file_path)
+                    cl_submit = frame_or_page.locator('#submitFileUploadFormBtn, button#submitFileUploadFormBtn, button:has-text("Upload A Document")').first
+                    if await cl_submit.count() > 0:
+                        print(f"Row {i+1}: Submitting Cover Letter upload")
+                        await cl_submit.click()
+                        await frame_or_page.wait_for_load_state('networkidle')
+                
 
 async def main():
     async with async_playwright() as p:
