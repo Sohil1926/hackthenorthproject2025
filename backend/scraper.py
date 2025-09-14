@@ -18,6 +18,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUTS_DIR = os.path.join(REPO_ROOT, "outputs")
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 OUTPUT_FILE = os.path.join(OUTPUTS_DIR, "waterlooworks_jobs.json")
+STORAGE_STATE_FILE = os.path.join(OUTPUTS_DIR, "storage_state.json")
 
 # Scraping Behavior
 ACTION_TIMEOUT = 15000  # Increased to 15 seconds for potentially slower connections/renders
@@ -311,7 +312,11 @@ async def main(max_jobs: int = None):
         
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
-        context = await browser.new_context()
+        # Reuse storage state if available to avoid re-login
+        if os.path.exists(STORAGE_STATE_FILE):
+            context = await browser.new_context(storage_state=STORAGE_STATE_FILE)
+        else:
+            context = await browser.new_context()
         page = await context.new_page()
 
         all_jobs_data = []
@@ -343,6 +348,12 @@ async def main(max_jobs: int = None):
             await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=300000)
             
             print(f"\n✅ Target page detected ({page.url})! Starting scrape...\n")
+            # Persist authenticated session for reuse by other modules
+            try:
+                await context.storage_state(path=STORAGE_STATE_FILE)
+                print(f"Saved session storage state to '{STORAGE_STATE_FILE}'")
+            except Exception:
+                pass
             
             page_num = 1
             consecutive_failures = 0
