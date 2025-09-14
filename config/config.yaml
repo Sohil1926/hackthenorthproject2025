@@ -1,5 +1,5 @@
-top_k: 5
-max_jobs: 50
+top_k: 4
+max_jobs: 20
 index_prefix: outputs/jobs_index
 resume_path: templates/resume.tex
 cover_path: templates/cover_letter.tex
