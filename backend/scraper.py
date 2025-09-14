@@ -54,6 +54,10 @@ async def get_job_summaries_from_page(page):
         
         for row in rows:
             try:
+                # Determine whether the row uses a header (th) for job ID
+                th_cells = row.locator("th")
+                th_count = await th_cells.count()
+
                 cells = row.locator("td")
                 cell_count = await cells.count()
                 
@@ -61,9 +65,18 @@ async def get_job_summaries_from_page(page):
                 if cell_count < 8:
                     print(f"  Warning: Row has only {cell_count} cells, skipping...")
                     continue
-                
-                job_id = await cells.nth(0).inner_text(timeout=ACTION_TIMEOUT)
-                job_title_element = cells.nth(1).locator("a").first
+
+                # Extract job ID and compute the correct index for the job title column
+                if th_count >= 1:
+                    th_text = await th_cells.nth(0).inner_text(timeout=ACTION_TIMEOUT)
+                    numbers = re.findall(r"\d+", th_text)
+                    job_id = numbers[-1] if numbers else th_text.strip()
+                    title_td_index = 0
+                else:
+                    job_id = await cells.nth(0).inner_text(timeout=ACTION_TIMEOUT)
+                    title_td_index = 1
+
+                job_title_element = cells.nth(title_td_index).locator("a").first
                 
                 # Check if the job title link exists
                 if await job_title_element.count() == 0:
