@@ -58,6 +58,7 @@ def match_resume_to_jobs(
     index_prefix: str,
     top_k: int = 10,
     model_name: str = os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+    constraints_path: "Optional[str]" = None,
 ) -> List[Dict[str, Any]]:
     """
     Load FAISS index and metadata, embed resume, and return top-k job matches as
@@ -66,6 +67,24 @@ def match_resume_to_jobs(
     index, meta = load_index(index_prefix)
     text = read_file_text(resume_path)
     q = build_query_embedding(text, model_name)
+    # Optionally blend in constraints signal
+    if constraints_path:
+        try:
+            constraints_text = read_file_text(constraints_path)
+        except FileNotFoundError:
+            constraints_text = ""
+        if constraints_text.strip():
+            c = build_query_embedding(constraints_text, model_name)
+            try:
+                weight = float(os.getenv("WAT_MATCH_CONSTRAINT_WEIGHT", "0.2"))
+            except Exception:
+                weight = 0.2
+            weight = max(0.0, min(1.0, weight))
+            q = (1.0 - weight) * q + weight * c
+            # Re-normalize to unit length for cosine via inner product
+            norm = np.linalg.norm(q, axis=1, keepdims=True)
+            norm[norm == 0] = 1.0
+            q = (q / norm).astype("float32")
     distances, ids = search(index, q, top_k)
     id_to_job_id: Dict[str, str] = meta.get("id_to_job_id", {})
     results: List[Dict[str, Any]] = []
