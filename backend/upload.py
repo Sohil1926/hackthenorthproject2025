@@ -116,6 +116,13 @@ async def apply(page, job_id):
                     await submit_upload.click()
                     await frame_or_page.wait_for_load_state('networkidle')
 
+            # If a cover letter upload button exists, click it next
+            cover_letter_btn = frame_or_page.locator('button.js--btn--upload-new-doc[data-dt-name="Cover Letter"]').first
+            if await cover_letter_btn.count() > 0:
+                print(f"Row {i+1}: Clicking Upload New Cover Letter")
+                await cover_letter_btn.click()
+                await frame_or_page.wait_for_timeout(300)
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
