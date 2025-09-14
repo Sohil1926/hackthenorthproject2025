@@ -104,17 +104,17 @@ async def apply(page, job_id):
                     print(f"Row {i+1}: Clicking file upload button")
                     await file_upload_button.click()
                     await frame_or_page.wait_for_timeout(300)
-                # Click the label that opens the OS file chooser
-                choose_label = frame_or_page.locator('label[for="fileUpload_docUpload"], label:has(#fileUploadLabel_docUpload)').first
-                if await choose_label.count() > 0:
-                    print(f"Row {i+1}: Clicking Choose a file label")
-                    await choose_label.click()
-                    await frame_or_page.wait_for_timeout(300)
-                # Upload the selected file directly to the hidden input
+             
                 file_input = frame_or_page.locator('input#fileUpload_docUpload, input[type="file"]').first
                 file_path = '/Users/sohilathare/Documents/Robot Operating System (ROS).pdf'
                 print(f"Row {i+1}: Setting file input: {file_path}")
                 await file_input.set_input_files(file_path)
+                # Submit the upload dialog
+                submit_upload = frame_or_page.locator('#submitFileUploadFormBtn, button#submitFileUploadFormBtn, button:has-text("Upload A Document")').first
+                if await submit_upload.count() > 0:
+                    print(f"Row {i+1}: Clicking Upload A Document")
+                    await submit_upload.click()
+                    await frame_or_page.wait_for_load_state('networkidle')
 
 async def main():
     async with async_playwright() as p:
