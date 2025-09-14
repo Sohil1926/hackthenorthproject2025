@@ -88,26 +88,12 @@ async def apply(page):
                         await span_label.first.click()
                         print(f"Row {i+1}: Clicked span.label--span for the radio")
 
-       
-
-        #    # Click radio button for "Create Custom Application Package"
-        #     custom_package_radio = page.locator('input[type="radio"][value="customPkg"][name="applyOption"]').first
-        #     if await custom_package_radio.count() > 0:
-        #         print(f"Row {i+1}: Selecting Create Custom Application Package")
-        #         try:
-        #             # Try clicking the radio button directly with force
-        #             await custom_package_radio.click(force=True)
-        #         except:
-        #             # If that fails, click the parent label instead
-        #             await custom_package_radio.locator('..').click()
-        #         await page.wait_for_timeout(500)
-        
-        #     # Click "Upload New Resume" button
-        #     upload_resume_button = page.locator('button.js--btn--upload-new-doc, button:has-text("Upload New Résumé")').first
-        #     if await upload_resume_button.count() > 0:
-        #         print(f"Row {i+1}: Clicking Upload New Resume")
-        #         await upload_resume_button.click()
-        #         await page.wait_for_timeout(1000)
+            # Click "Upload New Résumé" button
+            upload_button = frame_or_page.locator('button.js--btn--upload-new-doc, button:has-text("Upload New Résumé")').first
+            if await upload_button.count() > 0:
+                print(f"Row {i+1}: Clicking Upload New Résumé")
+                await upload_button.click()
+                await frame_or_page.wait_for_timeout(500)
 
 async def main():
     async with async_playwright() as p:
