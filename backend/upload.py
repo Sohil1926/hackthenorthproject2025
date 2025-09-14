@@ -2,7 +2,7 @@ from playwright.async_api import async_playwright
 import asyncio
 import os
 
-START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
+START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm"]
 ACTION_TIMEOUT = 60000
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
