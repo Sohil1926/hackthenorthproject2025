@@ -21,8 +21,8 @@ class WatMatchUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("WAT-Match Automator")
-        self.geometry("700x560")
-        self.resizable(False, False)
+        self.geometry("900x640")
+        self.resizable(True, True)
 
         # Light theme styling
         self.configure(bg="#ffffff")
@@ -36,6 +36,8 @@ class WatMatchUI(tk.Tk):
         style.configure('TButton', padding=8)
         style.configure('Accent.TButton', padding=10, background='#2563eb', foreground='#ffffff')
         style.map('Accent.TButton', background=[('active', '#1d4ed8')])
+        style.configure('Treeview', background='#ffffff', fieldbackground='#ffffff', foreground='#111111')
+        style.configure('Treeview.Heading', font=('Helvetica', 10, 'bold'))
 
         # Load config
         base_dir = os.path.dirname(__file__)
@@ -56,6 +58,7 @@ class WatMatchUI(tk.Tk):
         # Actions above log so Start is always visible
         self._build_actions()
         self._build_log()
+        self._build_summary_panel()
 
         # Poll logs
         self.after(100, self._drain_log_queue)
@@ -106,8 +109,21 @@ class WatMatchUI(tk.Tk):
         bar.pack(fill=tk.X)
         self.start_btn = ttk.Button(bar, text="Start", command=self._on_start, style='Accent.TButton')
         self.start_btn.pack(side=tk.LEFT)
-        self.summary_btn = ttk.Button(bar, text="Show Summary", command=self._show_summary, state=tk.DISABLED)
-        self.summary_btn.pack(side=tk.LEFT, padx=(8,0))
+
+    def _build_summary_panel(self):
+        frame = ttk.LabelFrame(self, text="Applications", padding=8, style='TFrame')
+        frame.pack(fill=tk.BOTH, expand=False, padx=12, pady=(0,12))
+        self.summary_frame = frame
+        columns = ("company", "title")
+        tree = ttk.Treeview(frame, columns=columns, show='headings', height=6)
+        tree.heading('company', text='Company')
+        tree.heading('title', text='Title')
+        tree.column('company', width=220, anchor='w')
+        tree.column('title', width=520, anchor='w')
+        tree.pack(fill=tk.BOTH, expand=True)
+        self.summary_tree = tree
+        self.summary_count_label = ttk.Label(frame, text="Applications: 0")
+        self.summary_count_label.pack(anchor='w', pady=(6,0))
 
     def _log(self, msg: str):
         self.log_queue.put(msg)
@@ -128,11 +144,17 @@ class WatMatchUI(tk.Tk):
         if self.run_thread and self.run_thread.is_alive():
             messagebox.showinfo("Busy", "A run is already in progress.")
             return
-        self.summary_btn.configure(state=tk.DISABLED)
         self.log_area.configure(state=tk.NORMAL)
         self.log_area.delete("1.0", tk.END)
         self.log_area.configure(state=tk.DISABLED)
         self.result_summary = []
+        # Clear applications panel
+        try:
+            for iid in self.summary_tree.get_children():
+                self.summary_tree.delete(iid)
+            self.summary_count_label.configure(text="Applications: 0")
+        except Exception:
+            pass
 
         max_jobs = int(self.max_jobs_var.get())
         top_k = int(self.topk_var.get())
@@ -212,23 +234,22 @@ class WatMatchUI(tk.Tk):
                 summary.append({"job_id": jid, "title": title, "company": company})
 
             self.result_summary = summary
-            self._log("Done. Click 'Show Summary' to view applications.")
-            self.summary_btn.configure(state=tk.NORMAL)
+            self._render_summary(summary)
+            self._log("Done. Applications listed below.")
         except Exception as e:
             self._log(f"Error: {e}")
-            self.summary_btn.configure(state=tk.DISABLED)
-
-    def _show_summary(self):
-        if not self.result_summary:
-            messagebox.showinfo("Summary", "No results to display yet.")
-            return
-        count = len(self.result_summary)
-        lines = [f"Applications: {count}"]
-        for item in self.result_summary:
-            title = item.get("title") or "(No title)"
-            company = item.get("company") or "(No company)"
-            lines.append(f"- {company} — {title}")
-        messagebox.showinfo("Applications Summary", "\n".join(lines))
+            
+    def _render_summary(self, items):
+        try:
+            for iid in self.summary_tree.get_children():
+                self.summary_tree.delete(iid)
+            for item in items:
+                title = item.get("title") or "(No title)"
+                company = item.get("company") or "(No company)"
+                self.summary_tree.insert('', tk.END, values=(company, title))
+            self.summary_count_label.configure(text=f"Applications: {len(items)}")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
@@ -258,8 +279,8 @@ class WatMatchUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("WAT-Match Automator")
-        self.geometry("700x560")
-        self.resizable(False, False)
+        self.geometry("900x640")
+        self.resizable(True, True)
 
         # Light theme styling
         self.configure(bg="#ffffff")
@@ -273,6 +294,8 @@ class WatMatchUI(tk.Tk):
         style.configure('TButton', padding=8)
         style.configure('Accent.TButton', padding=10, background='#2563eb', foreground='#ffffff')
         style.map('Accent.TButton', background=[('active', '#1d4ed8')])
+        style.configure('Treeview', background='#ffffff', fieldbackground='#ffffff', foreground='#111111')
+        style.configure('Treeview.Heading', font=('Helvetica', 10, 'bold'))
 
         # Load config
         base_dir = os.path.dirname(__file__)
@@ -293,6 +316,7 @@ class WatMatchUI(tk.Tk):
         # Move actions above log so Start is always visible
         self._build_actions()
         self._build_log()
+        self._build_summary_panel()
 
         # Poll logs
         self.after(100, self._drain_log_queue)
@@ -343,8 +367,21 @@ class WatMatchUI(tk.Tk):
         bar.pack(fill=tk.X)
         self.start_btn = ttk.Button(bar, text="Start", command=self._on_start, style='Accent.TButton')
         self.start_btn.pack(side=tk.LEFT)
-        self.summary_btn = ttk.Button(bar, text="Show Summary", command=self._show_summary, state=tk.DISABLED)
-        self.summary_btn.pack(side=tk.LEFT, padx=(8,0))
+
+    def _build_summary_panel(self):
+        frame = ttk.LabelFrame(self, text="Applications", padding=8, style='TFrame')
+        frame.pack(fill=tk.BOTH, expand=False, padx=12, pady=(0,12))
+        self.summary_frame = frame
+        columns = ("company", "title")
+        tree = ttk.Treeview(frame, columns=columns, show='headings', height=6)
+        tree.heading('company', text='Company')
+        tree.heading('title', text='Title')
+        tree.column('company', width=220, anchor='w')
+        tree.column('title', width=520, anchor='w')
+        tree.pack(fill=tk.BOTH, expand=True)
+        self.summary_tree = tree
+        self.summary_count_label = ttk.Label(frame, text="Applications: 0")
+        self.summary_count_label.pack(anchor='w', pady=(6,0))
 
     def _log(self, msg: str):
         self.log_queue.put(msg)
@@ -365,11 +402,17 @@ class WatMatchUI(tk.Tk):
         if self.run_thread and self.run_thread.is_alive():
             messagebox.showinfo("Busy", "A run is already in progress.")
             return
-        self.summary_btn.configure(state=tk.DISABLED)
         self.log_area.configure(state=tk.NORMAL)
         self.log_area.delete("1.0", tk.END)
         self.log_area.configure(state=tk.DISABLED)
         self.result_summary = []
+        # Clear applications panel
+        try:
+            for iid in self.summary_tree.get_children():
+                self.summary_tree.delete(iid)
+            self.summary_count_label.configure(text="Applications: 0")
+        except Exception:
+            pass
 
         max_jobs = int(self.max_jobs_var.get())
         top_k = int(self.topk_var.get())
@@ -449,23 +492,22 @@ class WatMatchUI(tk.Tk):
                 summary.append({"job_id": jid, "title": title, "company": company})
 
             self.result_summary = summary
-            self._log("Done. Click 'Show Summary' to view applications.")
-            self.summary_btn.configure(state=tk.NORMAL)
+            self._render_summary(summary)
+            self._log("Done. Applications listed below.")
         except Exception as e:
             self._log(f"Error: {e}")
-            self.summary_btn.configure(state=tk.DISABLED)
-
-    def _show_summary(self):
-        if not self.result_summary:
-            messagebox.showinfo("Summary", "No results to display yet.")
-            return
-        count = len(self.result_summary)
-        lines = [f"Applications: {count}"]
-        for item in self.result_summary:
-            title = item.get("title") or "(No title)"
-            company = item.get("company") or "(No company)"
-            lines.append(f"- {company} — {title}")
-        messagebox.showinfo("Applications Summary", "\n".join(lines))
+            
+    def _render_summary(self, items):
+        try:
+            for iid in self.summary_tree.get_children():
+                self.summary_tree.delete(iid)
+            for item in items:
+                title = item.get("title") or "(No title)"
+                company = item.get("company") or "(No company)"
+                self.summary_tree.insert('', tk.END, values=(company, title))
+            self.summary_count_label.configure(text=f"Applications: {len(items)}")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
