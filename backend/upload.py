@@ -104,6 +104,12 @@ async def apply(page, job_id):
                     print(f"Row {i+1}: Clicking file upload button")
                     await file_upload_button.click()
                     await frame_or_page.wait_for_timeout(300)
+                # Click the label that opens the OS file chooser
+                choose_label = frame_or_page.locator('label[for="fileUpload_docUpload"], label:has(#fileUploadLabel_docUpload)').first
+                if await choose_label.count() > 0:
+                    print(f"Row {i+1}: Clicking Choose a file label")
+                    await choose_label.click()
+                    await frame_or_page.wait_for_timeout(300)
 
 async def main():
     async with async_playwright() as p:
