@@ -40,7 +40,7 @@ def _compile_tex(tex_path: str, out_dir: str) -> str:
         print(f"      Warning: Tectonic not available. LaTeX file saved at {tex_path}")
         return tex_path
 
-    cmd = [tectonic_bin, "--batch", "--keep-logs", "--outdir", out_dir, tex_path]
+    cmd = [tectonic_bin, "--keep-logs", "--outdir", out_dir, tex_path]
     try:
         res = subprocess.run(cmd, cwd=out_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         return base_pdf_path
