@@ -110,6 +110,11 @@ async def apply(page, job_id):
                     print(f"Row {i+1}: Clicking Choose a file label")
                     await choose_label.click()
                     await frame_or_page.wait_for_timeout(300)
+                # Upload the selected file directly to the hidden input
+                file_input = frame_or_page.locator('input#fileUpload_docUpload, input[type="file"]').first
+                file_path = '/Users/sohilathare/Documents/Robot Operating System (ROS).pdf'
+                print(f"Row {i+1}: Setting file input: {file_path}")
+                await file_input.set_input_files(file_path)
 
 async def main():
     async with async_playwright() as p:
