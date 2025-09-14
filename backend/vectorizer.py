@@ -1,6 +1,5 @@
 import os
 import json
-import argparse
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -93,6 +92,10 @@ def build_faiss_index(embeddings: np.ndarray, ids: List[int]) -> faiss.Index:
 def save_index(index: faiss.Index, meta: Dict[str, Any], output_prefix: str) -> None:
     index_path = f"{output_prefix}.faiss"
     meta_path = f"{output_prefix}.meta.json"
+    # Ensure directory exists
+    dirpath = os.path.dirname(os.path.abspath(index_path))
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
     faiss.write_index(index, index_path)
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -101,7 +104,7 @@ def save_index(index: faiss.Index, meta: Dict[str, Any], output_prefix: str) -> 
 def vectorize_jobs(
     jobs_json_path: str,
     output_prefix: str,
-    model_name: str = os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     batch_size: int = 64,
 ) -> Dict[str, Any]:
     """
@@ -129,40 +132,13 @@ def vectorize_jobs(
     return meta
 
 
-def main() -> None:
-    base_dir = os.path.dirname(__file__)
-    parser = argparse.ArgumentParser(description="Build FAISS index for WaterlooWorks jobs")
-    parser.add_argument(
-        "--input",
-        default=os.path.join(base_dir, "waterlooworks_jobs.json"),
-        help="Path to jobs JSON (default: backend/waterlooworks_jobs.json)",
-    )
-    parser.add_argument(
-        "--output-prefix",
-        default=os.path.join(base_dir, "jobs_index"),
-        help="Output prefix for index and metadata (default: backend/jobs_index)",
-    )
-    parser.add_argument(
-        "--model",
-        default=os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
-        help="SentenceTransformer model name",
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=64, help="Embedding batch size"
-    )
-    args = parser.parse_args()
-
-    print("Building index...")
-    meta = vectorize_jobs(
-        jobs_json_path=args.input,
-        output_prefix=args.output_prefix,
-        model_name=args.model,
-        batch_size=args.batch_size,
-    )
-    print(json.dumps(meta, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "read_jobs_json",
+    "job_to_text",
+    "build_embeddings",
+    "build_faiss_index",
+    "save_index",
+    "vectorize_jobs",
+]
 
 

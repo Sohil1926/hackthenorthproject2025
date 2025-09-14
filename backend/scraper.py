@@ -12,7 +12,12 @@ import traceback
 # URLs and File Paths
 START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
-OUTPUT_FILE = "waterlooworks_jobs.json"
+
+# Route generated artifacts to a central outputs/ directory at repo root
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+OUTPUTS_DIR = os.path.join(REPO_ROOT, "outputs")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+OUTPUT_FILE = os.path.join(OUTPUTS_DIR, "waterlooworks_jobs.json")
 
 # Scraping Behavior
 ACTION_TIMEOUT = 15000  # Increased to 15 seconds for potentially slower connections/renders
@@ -23,6 +28,10 @@ RETRY_ATTEMPTS = 2      # How many times to retry scraping a single job's detail
 def save_data_incrementally(data, filename):
     """Saves the collected data to a JSON file."""
     try:
+        # Ensure directory exists for the target file
+        dirpath = os.path.dirname(os.path.abspath(filename))
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         print(f"\n✅ Progress saved. {len(data)} jobs collected so far in '{filename}'")
@@ -206,8 +215,13 @@ async def close_modal_safely(page):
         print(f"    Warning: Could not close modal. Error: {e}")
 
 
-async def main():
+async def main(max_jobs: int = None):
     """Launches a browser, waits for user login, then scrapes all jobs and their details."""
+    if max_jobs is not None:
+        print(f"Scraping limited to {max_jobs} jobs maximum.")
+    else:
+        print("Scraping all available jobs (unlimited).")
+        
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         context = await browser.new_context()
@@ -303,6 +317,13 @@ async def main():
                         
                         all_jobs_data.append(job_summary)
                         
+                        # Check if we've reached the max_jobs limit
+                        if max_jobs is not None and len(all_jobs_data) >= max_jobs:
+                            print(f"\n✅ Reached maximum job limit of {max_jobs}. Stopping scrape.")
+                            save_data_incrementally(all_jobs_data, OUTPUT_FILE)
+                            await browser.close()
+                            return
+                        
                         # Save progress every 10 jobs
                         if len(all_jobs_data) % 10 == 0:
                             save_data_incrementally(all_jobs_data, OUTPUT_FILE)
@@ -390,17 +411,20 @@ if __name__ == "__main__":
 
 
 # Convenience wrapper for orchestration
-def scrape_jobs() -> str:
+def scrape_jobs(max_jobs: int = None) -> str:
     """
     Runs the interactive scraper and returns the absolute path to the produced
     jobs JSON file. Ensures the scraper runs with the backend directory as the
-    working directory so the output lands in `backend/waterlooworks_jobs.json`.
+    working directory so the output lands in `outputs/waterlooworks_jobs.json`.
+    
+    Args:
+        max_jobs: Maximum number of jobs to scrape. If None, scrapes all available jobs.
     """
     backend_dir = os.path.dirname(__file__)
     prev_cwd = os.getcwd()
     try:
         os.chdir(backend_dir)
-        asyncio.run(main())
-        return os.path.join(backend_dir, OUTPUT_FILE)
+        asyncio.run(main(max_jobs=max_jobs))
+        return OUTPUT_FILE
     finally:
         os.chdir(prev_cwd)

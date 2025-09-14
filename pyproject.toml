@@ -18,4 +18,6 @@ dependencies = [
     "tqdm",
     "celery",
     "redis",
+    "anthropic",
+    "pyyaml",
 ]

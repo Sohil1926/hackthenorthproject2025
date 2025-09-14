@@ -1,5 +1,4 @@
 import os
-import argparse
 import json
 from typing import List, Dict, Any, Tuple
 
@@ -78,39 +77,12 @@ def match_resume_to_jobs(
     return results
 
 
-def main() -> None:
-    base_dir = os.path.dirname(__file__)
-    parser = argparse.ArgumentParser(description="Query FAISS index with resume to get top-K job IDs")
-    parser.add_argument(
-        "--index-prefix",
-        default=os.path.join(base_dir, "jobs_index"),
-        help="Path prefix to FAISS index and metadata (default: backend/jobs_index)",
-    )
-    parser.add_argument(
-        "--resume",
-        default=os.path.join(os.path.dirname(base_dir), "templates", "resume.tex"),
-        help="Path to resume (.tex/.txt/.md or .pdf)",
-    )
-    parser.add_argument("--top-k", type=int, default=10, help="Number of top matches to return")
-    parser.add_argument(
-        "--model",
-        default=os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
-        help="SentenceTransformer model name to ensure compatibility with the index",
-    )
-    parser.add_argument("--print", action="store_true", help="Print top results with scores")
-    args = parser.parse_args()
-
-    results = match_resume_to_jobs(
-        resume_path=args.resume,
-        index_prefix=args.index_prefix,
-        top_k=args.top_k,
-        model_name=args.model,
-    )
-
-    print(json.dumps({"top_k": args.top_k, "results": results}, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "read_file_text",
+    "build_query_embedding",
+    "load_index",
+    "search",
+    "match_resume_to_jobs",
+]
 
 
