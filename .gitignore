@@ -1,6 +1,13 @@
 venv/
+.venv/
 .env
 __pycache__/
 backend_javascript/node_modules
 frontend/node_modules
 alt_backend/node_modules
+
+# uv
+.python-version
+uv.lock
+
+backend/waterlooworks_jobs.json

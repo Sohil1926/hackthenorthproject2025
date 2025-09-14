@@ -1,0 +1,17 @@
+[project]
+name = "wat-match"
+version = "0.1.0"
+description = "A job matching system for WaterlooWorks"
+requires-python = ">=3.9"
+dependencies = [
+    "PyMuPDF",
+    "spacy",
+    "scikit-learn",
+    "playwright",
+    "beautifulsoup4",
+    "python-dotenv",
+    "stagehand",
+    "tqdm",
+    "celery",
+    "redis",
+]
