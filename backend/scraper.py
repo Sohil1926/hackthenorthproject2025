@@ -387,3 +387,20 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# Convenience wrapper for orchestration
+def scrape_jobs() -> str:
+    """
+    Runs the interactive scraper and returns the absolute path to the produced
+    jobs JSON file. Ensures the scraper runs with the backend directory as the
+    working directory so the output lands in `backend/waterlooworks_jobs.json`.
+    """
+    backend_dir = os.path.dirname(__file__)
+    prev_cwd = os.getcwd()
+    try:
+        os.chdir(backend_dir)
+        asyncio.run(main())
+        return os.path.join(backend_dir, OUTPUT_FILE)
+    finally:
+        os.chdir(prev_cwd)

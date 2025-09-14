@@ -2,22 +2,25 @@ import os
 import json
 from backend.vectorizer import vectorize_jobs
 from backend.matcher import match_resume_to_jobs
-
-
-def run(end_to_end_top_k: int = 10) -> None:
-    base_dir = os.path.dirname(__file__)
-    jobs_path = os.path.join(base_dir, "backend", "waterlooworks_jobs.json")
-    index_prefix = os.path.join(base_dir, "backend", "jobs_index")
-    resume_path = os.path.join(base_dir, "templates", "resume.tex")
-
-    # Build or refresh the index
-    meta = vectorize_jobs(jobs_json_path=jobs_path, output_prefix=index_prefix)
-    print("Index built:", json.dumps({k: meta[k] for k in ["num_vectors", "model_name", "dim"]}, indent=2))
-
-    # Match
-    results = match_resume_to_jobs(resume_path=resume_path, index_prefix=index_prefix, top_k=end_to_end_top_k)
-    print(json.dumps({"top_k": end_to_end_top_k, "results": results}, ensure_ascii=False, indent=2))
+from backend.scraper import scrape_jobs
 
 
 if __name__ == "__main__":
-    run(10)
+    # Editable parameters for quick experimentation
+    TOP_K = 10
+    BASE_DIR = os.path.dirname(__file__)
+    INDEX_PREFIX = os.path.join(BASE_DIR, "backend", "jobs_index")
+    RESUME_PATH = os.path.join(BASE_DIR, "templates", "resume.tex")
+
+    # 1) Always scrape (interactive)
+    print("Starting scraping session... (interactive)")
+    JOBS_PATH = scrape_jobs()
+    print(f"Scraped jobs saved to: {JOBS_PATH}")
+
+    # 2) Build/refresh FAISS index
+    meta = vectorize_jobs(jobs_json_path=JOBS_PATH, output_prefix=INDEX_PREFIX)
+    print("Index built:", json.dumps({k: meta[k] for k in ["num_vectors", "model_name", "dim"]}, indent=2))
+
+    # 3) Match resume against index
+    results = match_resume_to_jobs(resume_path=RESUME_PATH, index_prefix=INDEX_PREFIX, top_k=TOP_K)
+    print(json.dumps({"top_k": TOP_K, "results": results}, ensure_ascii=False, indent=2))
