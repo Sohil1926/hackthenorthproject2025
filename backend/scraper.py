@@ -39,11 +39,11 @@ def save_data_incrementally(data, filename):
         print(f"❌ Error saving data: {e}")
 
 
-async def get_job_summaries_from_page(page):
+async def get_job_summaries_from_page_full(page):
     """
-    Gets a list of job summaries from the current page.
+    Gets a list of job summaries from the current page for the Full/Cycle postings layout.
     """
-    print("  Extracting job summaries from the current page...")
+    print("  Extracting job summaries from the current page (full)...")
     job_summaries = []
     
     try:
@@ -109,8 +109,82 @@ async def get_job_summaries_from_page(page):
     except Exception as e:
         print(f"  Error getting job summaries: {e}")
         
-    print(f"  Found {len(job_summaries)} jobs on this page.")
+    print(f"  Found {len(job_summaries)} jobs on this page (full).")
     return job_summaries
+
+
+async def get_job_summaries_from_page_direct(page):
+    """
+    Gets a list of job summaries from the current page for the Direct postings layout.
+    """
+    print("  Extracting job summaries from the current page (direct)...")
+    job_summaries = []
+    
+    try:
+        list_selector = "tbody tr.table__row--body"
+        await page.wait_for_selector(list_selector, timeout=ACTION_TIMEOUT)
+        
+        rows = await page.locator(list_selector).all()
+        
+        for row in rows:
+            try:
+                cells = row.locator("td")
+                cell_count = await cells.count()
+                
+                # Ensure we have enough cells before accessing them
+                if cell_count < 8:
+                    print(f"  Warning: Row has only {cell_count} cells, skipping...")
+                    continue
+                
+                job_id = await cells.nth(0).inner_text(timeout=ACTION_TIMEOUT)
+                job_title_element = cells.nth(1).locator("a").first
+                
+                # Check if the job title link exists
+                if await job_title_element.count() == 0:
+                    print(f"  Warning: No job title link found for job ID {job_id}, skipping...")
+                    continue
+                
+                job_title = await job_title_element.inner_text(timeout=ACTION_TIMEOUT)
+                company = await cells.nth(2).inner_text(timeout=ACTION_TIMEOUT)
+                division = await cells.nth(3).inner_text(timeout=ACTION_TIMEOUT)
+                openings = await cells.nth(4).inner_text(timeout=ACTION_TIMEOUT)
+                city = await cells.nth(5).inner_text(timeout=ACTION_TIMEOUT)
+                level = await cells.nth(6).inner_text(timeout=ACTION_TIMEOUT)
+                deadline = await cells.nth(7).inner_text(timeout=ACTION_TIMEOUT)
+                
+                job_summaries.append({
+                    "id": job_id.strip(),
+                    "title": job_title.strip(),
+                    "company": company.strip(),
+                    "division": division.strip(),
+                    "openings": openings.strip(),
+                    "city": city.strip(),
+                    "level": level.strip(),
+                    "deadline": deadline.strip(),
+                    "link_locator": job_title_element
+                })
+            except Exception as e:
+                print(f"  Warning: Could not parse a row. Error: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"  Error getting job summaries: {e}")
+        
+    print(f"  Found {len(job_summaries)} jobs on this page (direct).")
+    return job_summaries
+
+
+async def get_job_summaries_from_page(page):
+    """Dispatches to the appropriate parser based on current URL."""
+    try:
+        current_url = page.url
+        if "/myAccount/co-op/direct/jobs.htm" in current_url:
+            return await get_job_summaries_from_page_direct(page)
+        # Default to full layout otherwise
+        return await get_job_summaries_from_page_full(page)
+    except Exception:
+        # Fallback to full parser
+        return await get_job_summaries_from_page_full(page)
 
 
 async def scrape_job_details(page):
