@@ -10,7 +10,7 @@ import traceback
 # --- CONFIGURATION ---
 # ==============================================================================
 # URLs and File Paths
-START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
+START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
 URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
 
 # Route generated artifacts to a central outputs/ directory at repo root
