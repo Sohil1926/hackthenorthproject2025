@@ -2,6 +2,9 @@ import os
 import json
 import yaml
 from dotenv import load_dotenv
+
+# Suppress tokenizer parallelism warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from backend.vectorizer import vectorize_jobs
 from backend.matcher import match_resume_to_jobs
 from backend.scraper import scrape_jobs
