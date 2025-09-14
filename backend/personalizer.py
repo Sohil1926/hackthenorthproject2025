@@ -1,4 +1,4 @@
-import os, json, re, subprocess, asyncio
+import os, json, re, subprocess, asyncio, shutil, sys
 from typing import List, Dict, Any
 
 from anthropic import AsyncAnthropic
@@ -33,11 +33,27 @@ def _extract_latex(text: str) -> str:
 
 def _compile_tex(tex_path: str, out_dir: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
+    base_pdf_path = os.path.splitext(os.path.join(out_dir, os.path.basename(tex_path)))[0] + ".pdf"
+    # Use TECTONIC_BIN set by main setup, or fallback to PATH only.
+    tectonic_bin = os.getenv("TECTONIC_BIN") or shutil.which("tectonic")
+    if not tectonic_bin:
+        print(f"      Warning: Tectonic not available. LaTeX file saved at {tex_path}")
+        return tex_path
+
+    cmd = [tectonic_bin, "--batch", "--keep-logs", "--outdir", out_dir, tex_path]
     try:
-        subprocess.run(["/Library/TeX/texbin/pdflatex", "-interaction=nonstopmode", "-output-directory", out_dir, tex_path], cwd=out_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        return os.path.splitext(os.path.join(out_dir, os.path.basename(tex_path)))[0] + ".pdf"
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"      Warning: PDF compilation failed ({e}). LaTeX file saved at {tex_path}")
+        res = subprocess.run(cmd, cwd=out_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        return base_pdf_path
+    except subprocess.CalledProcessError as e:
+        log_path = os.path.splitext(tex_path)[0] + ".log"
+        try:
+            output = e.stdout or ""
+            with open(log_path, "w", encoding="utf-8", errors="ignore") as lf:
+                lf.write(output)
+        except Exception:
+            log_path = None
+        suffix = f" See log: {log_path}" if log_path else ""
+        print(f"      Warning: PDF compilation failed (exit {e.returncode}). LaTeX saved at {tex_path}.{suffix}")
         return tex_path
 
 
@@ -91,9 +107,10 @@ def personalize_resume_and_cover_letter(
     
     print(f"Generating documents for {len(selected_job_ids)} jobs in parallel...")
     all_results = asyncio.run(process_all())
-    pdfs = [pdf for result in all_results for pdf in result]
+    outputs = [p for result in all_results for p in result]
+    pdfs = [p for p in outputs if p.lower().endswith('.pdf')]
     print(f"Complete! Generated {len(pdfs)} PDFs in {out_dir}")
-    return pdfs
+    return outputs
 
 
 __all__ = ["personalize_resume_and_cover_letter"]
