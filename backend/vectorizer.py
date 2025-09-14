@@ -98,6 +98,37 @@ def save_index(index: faiss.Index, meta: Dict[str, Any], output_prefix: str) -> 
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
 
+def vectorize_jobs(
+    jobs_json_path: str,
+    output_prefix: str,
+    model_name: str = os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+    batch_size: int = 64,
+) -> Dict[str, Any]:
+    """
+    Build a FAISS index over the provided jobs JSON file and save index + metadata.
+    Returns the metadata dictionary.
+    """
+    jobs = read_jobs_json(jobs_json_path)
+    texts: List[str] = [job_to_text(job) for job in jobs]
+    internal_ids: List[int] = list(range(len(jobs)))
+    id_to_job_id = {str(i): str(jobs[i].get("id", i)) for i in internal_ids}
+
+    embeddings = build_embeddings(texts, model_name, batch_size=batch_size)
+    index = build_faiss_index(embeddings, internal_ids)
+
+    meta = {
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "model_name": model_name,
+        "num_vectors": len(texts),
+        "dim": int(embeddings.shape[1]),
+        "id_to_job_id": id_to_job_id,
+        "source": os.path.abspath(jobs_json_path),
+    }
+
+    save_index(index, meta, output_prefix)
+    return meta
+
+
 def main() -> None:
     base_dir = os.path.dirname(__file__)
     parser = argparse.ArgumentParser(description="Build FAISS index for WaterlooWorks jobs")
@@ -121,34 +152,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print("Loading jobs...")
-    jobs = read_jobs_json(args.input)
-    print(f"Loaded {len(jobs)} jobs")
-
-    print("Preparing texts...")
-    texts: List[str] = [job_to_text(job) for job in jobs]
-    # Map internal numeric ids to external job ids (which are strings)
-    internal_ids: List[int] = list(range(len(jobs)))
-    id_to_job_id = {str(i): str(jobs[i].get("id", i)) for i in internal_ids}
-
-    print(f"Encoding {len(texts)} texts with model: {args.model}")
-    embeddings = build_embeddings(texts, args.model, batch_size=args.batch_size)
-
-    print("Building FAISS index (cosine via inner product)...")
-    index = build_faiss_index(embeddings, internal_ids)
-
-    meta = {
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "model_name": args.model,
-        "num_vectors": len(texts),
-        "dim": int(embeddings.shape[1]),
-        "id_to_job_id": id_to_job_id,
-        "source": os.path.abspath(args.input),
-    }
-
-    print(f"Saving index and metadata to prefix: {args.output_prefix}")
-    save_index(index, meta, args.output_prefix)
-    print("Done.")
+    print("Building index...")
+    meta = vectorize_jobs(
+        jobs_json_path=args.input,
+        output_prefix=args.output_prefix,
+        model_name=args.model,
+        batch_size=args.batch_size,
+    )
+    print(json.dumps(meta, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

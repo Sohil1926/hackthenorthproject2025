@@ -54,6 +54,30 @@ def search(index: faiss.Index, query_vec: np.ndarray, top_k: int) -> Tuple[np.nd
     return distances[0], ids[0]
 
 
+def match_resume_to_jobs(
+    resume_path: str,
+    index_prefix: str,
+    top_k: int = 10,
+    model_name: str = os.environ.get("WAT_MATCH_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+) -> List[Dict[str, Any]]:
+    """
+    Load FAISS index and metadata, embed resume, and return top-k job matches as
+    a list of {job_id, score} sorted by score desc.
+    """
+    index, meta = load_index(index_prefix)
+    text = read_file_text(resume_path)
+    q = build_query_embedding(text, model_name)
+    distances, ids = search(index, q, top_k)
+    id_to_job_id: Dict[str, str] = meta.get("id_to_job_id", {})
+    results: List[Dict[str, Any]] = []
+    for score, internal_id in zip(distances.tolist(), ids.tolist()):
+        if internal_id == -1:
+            continue
+        job_id = id_to_job_id.get(str(internal_id), str(internal_id))
+        results.append({"job_id": job_id, "score": float(score)})
+    return results
+
+
 def main() -> None:
     base_dir = os.path.dirname(__file__)
     parser = argparse.ArgumentParser(description="Query FAISS index with resume to get top-K job IDs")
@@ -76,21 +100,12 @@ def main() -> None:
     parser.add_argument("--print", action="store_true", help="Print top results with scores")
     args = parser.parse_args()
 
-    index, meta = load_index(args.index_prefix)
-
-    resume_text = read_file_text(args.resume)
-    query_vec = build_query_embedding(resume_text, args.model)
-
-    distances, ids = search(index, query_vec, args.top_k)
-
-    # Map internal IDs back to job IDs
-    id_to_job_id: Dict[str, str] = meta.get("id_to_job_id", {})
-    results: List[Dict[str, Any]] = []
-    for score, internal_id in zip(distances.tolist(), ids.tolist()):
-        if internal_id == -1:
-            continue
-        job_id = id_to_job_id.get(str(internal_id), str(internal_id))
-        results.append({"job_id": job_id, "score": float(score)})
+    results = match_resume_to_jobs(
+        resume_path=args.resume,
+        index_prefix=args.index_prefix,
+        top_k=args.top_k,
+        model_name=args.model,
+    )
 
     print(json.dumps({"top_k": args.top_k, "results": results}, ensure_ascii=False, indent=2))
 

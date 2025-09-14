@@ -1,12 +1,23 @@
-# modularized functions from backend folder
-from backend.scraper import scrape_jobs
+import os
+import json
 from backend.vectorizer import vectorize_jobs
 from backend.matcher import match_resume_to_jobs
 
+
+def run(end_to_end_top_k: int = 10) -> None:
+    base_dir = os.path.dirname(__file__)
+    jobs_path = os.path.join(base_dir, "backend", "waterlooworks_jobs.json")
+    index_prefix = os.path.join(base_dir, "backend", "jobs_index")
+    resume_path = os.path.join(base_dir, "templates", "resume.tex")
+
+    # Build or refresh the index
+    meta = vectorize_jobs(jobs_json_path=jobs_path, output_prefix=index_prefix)
+    print("Index built:", json.dumps({k: meta[k] for k in ["num_vectors", "model_name", "dim"]}, indent=2))
+
+    # Match
+    results = match_resume_to_jobs(resume_path=resume_path, index_prefix=index_prefix, top_k=end_to_end_top_k)
+    print(json.dumps({"top_k": end_to_end_top_k, "results": results}, ensure_ascii=False, indent=2))
+
+
 if __name__ == "__main__":
-    # scrape jobs
-    # potential: do deterministic filtering of jobs based on location, job title, compensation, etc.
-    # vectorize jobs and match template resume to jobs, return id's of top n matches
-    # potential: do further filtering based on LLM choice and human constraint description.
-    # use LLM to personalize the /template/resume.tex and /template/cover_letter.tex to selected id's
-    # return the personalized resume and cover letter to selected id's
+    run(10)
