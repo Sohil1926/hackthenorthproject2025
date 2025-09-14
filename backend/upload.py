@@ -160,14 +160,31 @@ async def apply(page, job_id):
                 print(f"Row {i+1}: Clicking Done")
                 await done_btn.click()
                 await frame_or_page.wait_for_load_state('networkidle')
-                
+            
+            # Return to Full-Cycle Service, then back to Job Postings for the next job id
+            # If the application opened in a new tab, it may be closed after finishing. Fallback to the original page.
+            if app_page.is_closed():
+                app_page = page
+            full_cycle_link = app_page.locator('a[href="/myAccount/co-op/full.htm"], a:has-text("Full-Cycle Service")').first
+            if await full_cycle_link.count() > 0:
+                print(f"Row {i+1}: Navigating back to Full-Cycle Service")
+                await full_cycle_link.click()
+                await app_page.wait_for_load_state('networkidle')
+            else:
+                await app_page.goto('https://waterlooworks.uwaterloo.ca/myAccount/co-op/full.htm')
+                await app_page.wait_for_load_state('networkidle')
+
+            # Ensure we are back on the jobs search page for the next iteration
+            await app_page.goto(START_URL)
+            await app_page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
+            await app_page.wait_for_load_state('networkidle')
 
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, slow_mo=50)
         context = await browser.new_context()
         
-        job_ids = ["436892", "436765"]
+        job_ids = ["436892", "436734"]
         await search_job_by_id(job_ids, context)
         await browser.close()
 
