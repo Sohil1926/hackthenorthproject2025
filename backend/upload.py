@@ -1,16 +1,20 @@
 from playwright.async_api import async_playwright
 import asyncio
 
-START_URL = "https://waterlooworks.uwaterloo.ca/home.htm"
-URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm", "/myAccount/co-op/direct/jobs.htm"]
+START_URL = "https://waterlooworks.uwaterloo.ca/myAccount/co-op/full/jobs.htm"
+URL_FRAGMENTS = ["/myAccount/co-op/full/jobs.htm"]
 ACTION_TIMEOUT = 15000
 
 async def search_job_by_id(id_list: list, context):
     page = await context.new_page()
     await page.goto(START_URL)
     
-    print("Please log in and navigate to a job postings page.")
-    await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=300000)
+    print("Please log in. I'll redirect you to the job postings page after login.")
+    # Wait until we're back on any authenticated myAccount page
+    await page.wait_for_url(lambda url: "/myAccount/" in url, timeout=300000)
+    # Ensure we land on the jobs page specifically
+    await page.goto(START_URL)
+    await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
     await page.wait_for_load_state('networkidle')
     
     for job_id in id_list:
