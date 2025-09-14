@@ -42,7 +42,19 @@ async def search_job_by_id(id_list: list, context, out_dir: str | None = None):
         await page.wait_for_timeout(2000)
         
         print(f"Searching for job ID: {job_id}")
-        await apply(page, job_id, resume_path=resume_path, cover_path=cover_path)
+        try:
+            await apply(page, job_id, resume_path=resume_path, cover_path=cover_path)
+        except Exception as e:
+            print(f"Error during apply for {job_id}: {e}. Recovering and continuing...")
+        # Ensure we have an open page for next iteration
+        try:
+            if page.is_closed():
+                page = await context.new_page()
+                await page.goto(START_URL)
+                await page.wait_for_url(lambda url: any(frag in url for frag in URL_FRAGMENTS), timeout=60000)
+                await page.wait_for_load_state('networkidle')
+        except Exception:
+            pass
 
 async def apply(page, job_id, resume_path: str | None = None, cover_path: str | None = None):
     rows = await page.locator("tbody tr.table__row--body").all()
@@ -85,13 +97,38 @@ async def apply(page, job_id, resume_path: str | None = None, cover_path: str | 
                         await cancel_btn.click()
                         # Attempt to confirm the cancellation if a modal appears
                         try:
-                            confirm_btn = app_page.locator('button:has-text("Yes"), button:has-text("Confirm"), button:has-text("OK")').first
-                            if await confirm_btn.count() > 0:
-                                await confirm_btn.click()
+                            # Wait briefly for modal to appear
+                            try:
+                                await app_page.wait_for_selector('.modal__inner', timeout=2000)
+                            except Exception:
+                                pass
+
+                            # Prefer the explicit Yes selector when available
+                            yes_btn = app_page.locator('button.js--confirm.sel_YesButtonTest, button.sel_YesButtonTest, .modal__inner button.js--confirm:has-text("Yes")').first
+                            if await yes_btn.count() == 0:
+                                # Fallback to common label-based buttons
+                                yes_btn = app_page.locator('button:has-text("Yes"), button:has-text("Confirm"), button:has-text("OK")').first
+
+                            if await yes_btn.count() == 0:
+                                # Search within frames as a last resort
+                                for frame in app_page.frames:
+                                    try:
+                                        candidate = frame.locator('button.js--confirm.sel_YesButtonTest, button.sel_YesButtonTest, .modal__inner button.js--confirm:has-text("Yes"), button:has-text("Yes"), button:has-text("Confirm"), button:has-text("OK")').first
+                                        if await candidate.count() > 0:
+                                            yes_btn = candidate
+                                            break
+                                    except Exception:
+                                        continue
+
+                            if await yes_btn.count() > 0:
+                                await yes_btn.click()
                         except Exception:
                             pass
-                        # Allow UI to update and handle page closure
-                        await app_page.wait_for_timeout(500)
+                        # Allow UI to update; safe even if page closed
+                        try:
+                            await app_page.wait_for_timeout(300)
+                        except Exception:
+                            pass
                         if app_page.is_closed():
                             app_page = page
                         # Navigate back to job postings for next id
