@@ -21,9 +21,9 @@ async def search_job_by_id(id_list: list, context):
         await page.wait_for_timeout(2000)
         
         print(f"Searching for job ID: {job_id}")
-        await apply(page)
+        await apply(page, job_id)
 
-async def apply(page):
+async def apply(page, job_id):
     rows = await page.locator("tbody tr.table__row--body").all()
     
     for i, row in enumerate(rows):
@@ -93,7 +93,11 @@ async def apply(page):
             if await upload_button.count() > 0:
                 print(f"Row {i+1}: Clicking Upload New Résumé")
                 await upload_button.click()
-                await frame_or_page.wait_for_timeout(500)
+                # Wait for the document name input and fill it with desired value
+                doc_name_input = frame_or_page.locator('input[name="docName"]').first
+                await doc_name_input.wait_for(state='visible', timeout=20000)
+                await doc_name_input.fill(f"Resume + {job_id}")
+                await frame_or_page.wait_for_timeout(300)
 
 async def main():
     async with async_playwright() as p:
